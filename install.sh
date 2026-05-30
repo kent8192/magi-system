@@ -50,6 +50,50 @@ fi
 
 "$LOCAL_CLI" install
 
+# --- Install the magi plugins into Claude Code and Codex (best effort) ---
+# Both CLIs resolve the "magi-dev" marketplace from this repository's root
+# manifest (.claude-plugin/marketplace.json) and install the plugin that
+# targets their runtime:
+#   - magi-agent → Claude Code (the event-driven bridge under integrations/)
+#   - magi       → Codex (the Redis-backed messaging skill at the repo root)
+# The marketplace is fetched from the GitHub repository, so the plugins must be
+# published on the repository's default branch. Each step is best effort: if the
+# CLI is absent or a command fails, the magi binary install above is unaffected.
+MAGI_PLUGIN_REPO="${MAGI_PLUGIN_REPO:-kent8192/magi}"
+MAGI_PLUGIN_MARKETPLACE="${MAGI_PLUGIN_MARKETPLACE:-magi-dev}"
+
+install_claude_plugin() {
+  if ! command -v claude >/dev/null 2>&1; then
+    echo "skip: claude CLI not found; not installing the magi-agent Claude Code plugin"
+    return 0
+  fi
+  echo "installing the magi-agent plugin into Claude Code..."
+  # Adding a marketplace that already exists is treated as success.
+  claude plugin marketplace add "$MAGI_PLUGIN_REPO" || true
+  if claude plugin install "magi-agent@$MAGI_PLUGIN_MARKETPLACE" --scope user; then
+    echo "  installed magi-agent@$MAGI_PLUGIN_MARKETPLACE (restart Claude Code to load it)"
+  else
+    echo "warning: failed to install magi-agent@$MAGI_PLUGIN_MARKETPLACE into Claude Code" >&2
+  fi
+}
+
+install_codex_plugin() {
+  if ! command -v codex >/dev/null 2>&1; then
+    echo "skip: codex CLI not found; not installing the magi Codex plugin"
+    return 0
+  fi
+  echo "installing the magi plugin into Codex..."
+  codex plugin marketplace add "$MAGI_PLUGIN_REPO" || true
+  if codex plugin add "magi@$MAGI_PLUGIN_MARKETPLACE"; then
+    echo "  installed magi@$MAGI_PLUGIN_MARKETPLACE"
+  else
+    echo "warning: failed to add magi@$MAGI_PLUGIN_MARKETPLACE into Codex" >&2
+  fi
+}
+
+install_claude_plugin
+install_codex_plugin
+
 cat <<MSG
 
 Installed magi:
@@ -58,6 +102,10 @@ Installed magi:
 
 Configuration:
   $HOME/.magi
+
+Plugins (best effort, from the "$MAGI_PLUGIN_MARKETPLACE" marketplace):
+  Claude Code: magi-agent  (restart Claude Code, then run /magi-system setup)
+  Codex:       magi
 
 Next:
   1. Run: ~/.local/bin/magi redis start

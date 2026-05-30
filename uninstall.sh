@@ -42,6 +42,34 @@ confirm() {
   [ "${input:-n}" = "y" ] || [ "${input:-n}" = "Y" ]
 }
 
+# --- Remove the magi plugins from Claude Code and Codex (best effort) ---
+# These plugins are registered from the repository "magi-dev" marketplace:
+#   - magi-agent in Claude Code
+#   - magi in Codex
+# Removal runs independently of the managed skill directory below, so orphaned
+# plugin registrations are always cleaned up, and it never aborts the uninstall.
+MAGI_PLUGIN_MARKETPLACE="${MAGI_PLUGIN_MARKETPLACE:-magi-dev}"
+PLUGINS_REMOVED=false
+
+remove_agent_plugins() {
+  if command -v claude >/dev/null 2>&1; then
+    if claude plugin uninstall "magi-agent" --scope user --yes >/dev/null 2>&1; then
+      echo "  - removed magi-agent plugin from Claude Code"
+      PLUGINS_REMOVED=true
+    fi
+    claude plugin marketplace remove "$MAGI_PLUGIN_MARKETPLACE" >/dev/null 2>&1 || true
+  fi
+  if command -v codex >/dev/null 2>&1; then
+    if codex plugin remove "magi@$MAGI_PLUGIN_MARKETPLACE" >/dev/null 2>&1; then
+      echo "  - removed magi plugin from Codex"
+      PLUGINS_REMOVED=true
+    fi
+    codex plugin marketplace remove "$MAGI_PLUGIN_MARKETPLACE" >/dev/null 2>&1 || true
+  fi
+}
+
+remove_agent_plugins
+
 # --- Find installed skill directories ---
 SKILL_DIRS=()
 for d in "$AGENTS_DIR"/skills/*/; do
@@ -51,7 +79,11 @@ for d in "$AGENTS_DIR"/skills/*/; do
 done
 
 if [ ${#SKILL_DIRS[@]} -eq 0 ]; then
-  echo "  Nothing to remove (not installed?)"
+  if [ "$PLUGINS_REMOVED" = true ]; then
+    echo "  ✓ Removed magi plugins (no managed skill directory found)"
+  else
+    echo "  Nothing to remove (not installed?)"
+  fi
   echo ""
   exit 0
 fi
@@ -246,7 +278,7 @@ fi
 
 # --- Done ---
 echo ""
-if [ "$REMOVED" = true ]; then
+if [ "$REMOVED" = true ] || [ "$PLUGINS_REMOVED" = true ]; then
   echo "  ✓ Uninstall complete"
 else
   echo "  Nothing removed."
