@@ -19,12 +19,39 @@ The installer builds the Rust binary and places it at:
 
 Configuration and managed Redis state are stored under `~/.magi`.
 
-## Codex Plugin
+The installer then registers the magi plugins (best effort) with whichever
+agent CLIs are present — `claude` and `codex` — and `./uninstall.sh` removes
+them again. See [Plugins](#plugins) below. Override the source repository or
+marketplace name with the `MAGI_PLUGIN_REPO` and `MAGI_PLUGIN_MARKETPLACE`
+environment variables.
 
-This repository also includes a Codex plugin manifest at
-`.codex-plugin/plugin.json`. The plugin exposes the same `magi` skill behavior
-as the installed Codex skill metadata and points agents to the Rust CLI at
-`~/.agents/skills/magi/bin/magi`.
+## Plugins
+
+The repository ships two plugins, both listed in the root
+`.claude-plugin/marketplace.json` under the `magi-dev` marketplace:
+
+- **`magi` (Codex)** — manifest at `.codex-plugin/plugin.json`, exposing the
+  `magi` messaging skill that points agents to the Rust CLI at
+  `~/.agents/skills/magi/bin/magi`.
+- **`magi-agent` (Claude Code)** — the event-driven bridge under
+  `integrations/magi-agent-plugin/` that turns incoming magi messages into a
+  live Claude session.
+
+`./install.sh` installs both by fetching the marketplace from GitHub:
+
+```bash
+# Claude Code
+claude plugin marketplace add kent8192/magi
+claude plugin install magi-agent@magi-dev
+
+# Codex
+codex plugin marketplace add kent8192/magi
+codex plugin add magi@magi-dev
+```
+
+Because the marketplace is resolved from the repository's default branch, the
+plugins must be published there for these commands to succeed. After installing
+into Claude Code, restart it and run `/magi-system setup`.
 
 ## Quick Start
 

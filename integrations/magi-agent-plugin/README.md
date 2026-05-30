@@ -16,7 +16,19 @@ delivery is instant rather than polled.
 - The `claude` CLI on `PATH` (the SDK drives it; uses your existing Claude auth).
 - Node.js ≥ 22.18 (runs the TypeScript bridge via native type-stripping) and npm.
 
-## Install (local dev marketplace)
+## Install
+
+The repository-root `./install.sh` registers this plugin automatically (best
+effort) from the GitHub `magi-dev` marketplace:
+
+```bash
+claude plugin marketplace add kent8192/magi
+claude plugin install magi-agent@magi-dev
+# restart Claude Code
+```
+
+For local development against an unpublished checkout, add the plugin directory
+itself as the marketplace instead:
 
 ```bash
 /plugin marketplace add /absolute/path/to/magi/integrations/magi-agent-plugin
