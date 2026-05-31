@@ -19,6 +19,13 @@ fi
 
 sanitize() { printf '%s' "${1:-}" | tr -d '"\\\n\r' ; }
 
+ephemeral_on() {
+  case "$(printf '%s' "${MAGI_CODEX_EPHEMERAL:-1}" | tr '[:upper:]' '[:lower:]')" in
+    0 | false | no | off) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
 json_string() {
   printf '%s' "$HOOK_INPUT" |
     sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" |
@@ -46,13 +53,35 @@ if { [ -n "$MAGI" ] && [ -x "$MAGI" ]; }; then
 fi
 
 session_record="missing"
+session_team=""
+session_file=""
 session_key="$(printf '%s' "$SESSION_ID" | tr -cd 'A-Za-z0-9._-')"
 if [ -n "$session_key" ]; then
   session_file="$SESSIONS_DIR/$session_key.agent"
   if [ -f "$session_file" ]; then
     session_record="$(sanitize "$(sed -n '1p' "$session_file" 2>/dev/null)")"
+    session_team="$(sanitize "$(sed -n '2p' "$session_file" 2>/dev/null)")"
     [ -n "$session_record" ] || session_record="present"
   fi
+fi
+
+if [ "$session_record" = "missing" ] && ephemeral_on \
+  && [ "$redis_state" = "reachable" ] && [ -n "$team" ] && [ -n "$session_file" ]; then
+  prev_agent="$agent"
+  spawned="$(sanitize "$("$MAGI" agent spawn --type codex 2>/dev/null | tail -n1)")"
+  if [ -n "$spawned" ]; then
+    mkdir -p "$SESSIONS_DIR" 2>/dev/null || true
+    printf '%s\n%s\n%s\n' "$spawned" "$team" "$prev_agent" >"$session_file" 2>/dev/null || true
+    session_record="$spawned"
+    session_team="$team"
+  fi
+fi
+
+if [ "$session_record" != "missing" ] && [ "$session_record" != "present" ]; then
+  agent="$session_record"
+fi
+if [ -n "$session_team" ]; then
+  team="$session_team"
 fi
 
 ctx="magi-system context. session_id: ${SESSION_ID:-unset}; agent: ${agent:-unset}; team: ${team:-unset}; redis: ${redis_state}; session_record: ${session_record}; state_dir: $(sanitize "$STATE_DIR")."

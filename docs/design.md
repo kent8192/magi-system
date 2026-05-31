@@ -88,9 +88,21 @@ lifecycle from session hooks. SessionStart spawns an agent (recording
 `<name, team, prev-agent>` keyed by the runtime session id under the runtime
 state dir) and SessionEnd despawns it and restores the previously active
 identity. Claude Code uses `MAGI_AGENT_EPHEMERAL=0` to opt out; Codex uses
-`MAGI_CODEX_EPHEMERAL=0`. The Codex plugin also injects a compact
-UserPromptSubmit context block before each prompt with the resolved session id,
-active magi agent, active team, Redis state, and session record status.
+`MAGI_CODEX_EPHEMERAL=0`.
+
+Interactive messaging commands resolve identity in two layers. When a runtime
+session id is available (`MAGI_SESSION_ID`, `CODEX_THREAD_ID`,
+`CODEX_SESSION_ID`, or `CLAUDE_SESSION_ID`), `send`, `inbox`, `history`, and
+`watch` first read the matching session record under the Codex or Claude Code
+state directory. Only when no record exists do they fall back to the global
+`identity.active_agent` / `identity.active_team` config values. This keeps
+concurrent sessions in one `$HOME` speaking as their own spawned agent names.
+
+The Codex plugin also injects a compact UserPromptSubmit context block before
+each prompt with the resolved session id, active magi agent, active team, Redis
+state, and session record status. If Codex was updated after a session started
+and SessionStart did not create a record, UserPromptSubmit performs the same
+spawn-and-record step before injecting context.
 
 ## Plugin Parity (Codex vs Claude Code)
 

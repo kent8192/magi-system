@@ -106,10 +106,25 @@ teardown() {
   [[ "$output" == *'"hookEventName":"UserPromptSubmit"'* ]]
   [[ "$output" == *"magi-system context"* ]]
   [[ "$output" == *"session_id: thread-3"* ]]
-  [[ "$output" == *"agent: kent8192"* ]]
+  [[ "$output" == *"agent: quiet-melchior"* ]]
   [[ "$output" == *"team: testteam"* ]]
   [[ "$output" == *"redis: reachable"* ]]
   [[ "$output" == *"session_record: quiet-melchior"* ]]
+}
+
+@test "Codex UserPromptSubmit spawns when SessionStart did not record this session" {
+  CODEX_THREAD_ID=thread-4 run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"session_id: thread-4"* ]]
+  [[ "$output" == *"agent: quiet-melchior"* ]]
+  [[ "$output" == *"session_record: quiet-melchior"* ]]
+
+  local file="$MAGI_CODEX_STATE_DIR/sessions/thread-4.agent"
+  [ -f "$file" ]
+  [ "$(sed -n '1p' "$file")" = "quiet-melchior" ]
+  [ "$(sed -n '2p' "$file")" = "testteam" ]
+  [ "$(sed -n '3p' "$file")" = "kent8192" ]
+  grep -q "spawn agent spawn --type codex" "$CALLS"
 }
 
 @test "MAGI_CODEX_EPHEMERAL=0 disables Codex auto-spawning" {

@@ -94,10 +94,10 @@ This is on by default; disable it with `MAGI_AGENT_EPHEMERAL=0`. Spawning is
 idempotent per session (a re-fired SessionStart does not create duplicates), and
 both hooks are best-effort — they never block session start or end.
 
-> Single-session-per-`$HOME` assumption: the active identity is shared per
-> `$HOME`, so the backup/restore is safe when one session is active per `$HOME`
-> at a time (the recommended multi-agent layout uses a separate `$HOME` per
-> agent). Concurrent sessions in one `$HOME` are not yet supported.
+Messaging commands resolve the session record before the global active identity,
+so concurrent sessions in one `$HOME` can send, read, and watch as their own
+spawned MAGI agent names. The global `identity.active_agent` backup/restore is
+kept as a fallback for commands outside a runtime session.
 
 If magi is not installed, the hooks exit silently.
 

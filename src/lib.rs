@@ -20,6 +20,7 @@
 //! | `redis_client` | Thin async Redis client wrapper used throughout the crate |
 //! | `redis_manager` | High-level manager that owns the connection pool and Stream/Pub-Sub multiplexing |
 //! | `repl` | Interactive REPL for composing and reading messages at the terminal |
+//! | `session_identity` | Runtime session-record identity resolution for concurrent agent sessions |
 //! | `ssh` | SSH helpers for tunnelling connections to remote Redis instances |
 //! | `team` | Team membership management: join, leave, list members |
 //! | `watch` | Watch mode: continuous message tailing with line or JSON output |
@@ -69,6 +70,9 @@ pub mod redis_manager;
 /// Interactive REPL for composing outgoing messages and displaying
 /// incoming ones at an interactive terminal session.
 pub mod repl;
+
+/// Runtime session-record identity resolution for concurrent agent sessions.
+pub mod session_identity;
 
 /// SSH tunnel helpers for forwarding local ports to a remote Redis
 /// instance when agents run on different hosts.
