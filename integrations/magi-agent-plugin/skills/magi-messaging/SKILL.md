@@ -59,6 +59,18 @@ magi join --invite <token>
 magi config set identity.active_team <team>   # join does not set the active team
 ```
 
+## Ephemeral session agents
+
+```bash
+magi agent spawn [--team <t>]           # register a unique <adjective>-<magi> agent, adopt it
+magi agent despawn [--team <t>] [--name <n>]  # remove it again (defaults to the active agent)
+```
+
+`spawn` assigns a deterministic cycling MAGI codename (`melchior` → `balthasar`
+→ `caspar`) and sets it as `identity.active_agent`. The Claude Code session
+hooks call these automatically (spawn on start, despawn on end); run them by
+hand only for manual lifecycle control.
+
 ## When to hand off to the bridge
 
 If the user wants messages handled automatically (a bot that replies the moment a

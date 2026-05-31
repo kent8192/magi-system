@@ -84,6 +84,8 @@ magi invite create --team <team> [--ttl 24h]
 magi invite list --team <team>
 magi invite revoke <invite_id>
 magi join --invite <token>
+magi agent spawn [--team <team>] [--type <type>]
+magi agent despawn [--team <team>] [--name <agent>]
 magi send <agent> <message>
 magi inbox
 magi history [--team <team>] [--agent <agent>]
