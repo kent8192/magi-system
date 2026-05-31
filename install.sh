@@ -76,6 +76,11 @@ find_codex_cli() {
   return 1
 }
 
+claude_plugin_installed() {
+  local plugin_id="magi-agent@$MAGI_PLUGIN_MARKETPLACE"
+  claude plugin list --json 2>/dev/null | grep -Fq "\"id\": \"$plugin_id\""
+}
+
 install_claude_plugin() {
   if ! command -v claude >/dev/null 2>&1; then
     echo "skip: claude CLI not found; not installing the magi-agent Claude Code plugin"
@@ -89,12 +94,16 @@ install_claude_plugin() {
   # Refresh the marketplace before updating so existing plugin installs can pick
   # up the repository's current published version.
   claude plugin marketplace update "$MAGI_PLUGIN_MARKETPLACE" >/dev/null 2>&1 || true
-  if claude plugin update "magi-agent@$MAGI_PLUGIN_MARKETPLACE" --scope user; then
-    echo "  updated magi-agent@$MAGI_PLUGIN_MARKETPLACE (restart Claude Code to load it)"
+  if claude_plugin_installed; then
+    if claude plugin update "magi-agent@$MAGI_PLUGIN_MARKETPLACE" --scope user; then
+      echo "  updated magi-agent@$MAGI_PLUGIN_MARKETPLACE (restart Claude Code to load it)"
+    else
+      echo "warning: failed to update magi-agent@$MAGI_PLUGIN_MARKETPLACE in Claude Code" >&2
+    fi
   elif claude plugin install "magi-agent@$MAGI_PLUGIN_MARKETPLACE" --scope user; then
     echo "  installed magi-agent@$MAGI_PLUGIN_MARKETPLACE (restart Claude Code to load it)"
   else
-    echo "warning: failed to install or update magi-agent@$MAGI_PLUGIN_MARKETPLACE in Claude Code" >&2
+    echo "warning: failed to install magi-agent@$MAGI_PLUGIN_MARKETPLACE in Claude Code" >&2
   fi
 }
 

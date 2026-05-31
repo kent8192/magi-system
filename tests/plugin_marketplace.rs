@@ -128,6 +128,18 @@ fn installer_updates_claude_plugin_by_marketplace_selector() {
         installer.contains(r#"claude plugin update "magi-agent@$MAGI_PLUGIN_MARKETPLACE""#),
         "Claude updates should use the installed plugin selector including its marketplace"
     );
+    assert!(
+        installer.contains("claude plugin install \"magi-agent@$MAGI_PLUGIN_MARKETPLACE\""),
+        "Claude installs should use the plugin selector including its marketplace"
+    );
+    assert!(
+        installer.contains("claude_plugin_installed()"),
+        "installer should avoid running Claude plugin update before the plugin is installed"
+    );
+    assert!(
+        installer.contains("claude plugin list --json"),
+        "installer should check installed Claude plugins before choosing update or install"
+    );
 }
 
 #[test]
