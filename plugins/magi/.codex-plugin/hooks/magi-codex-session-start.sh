@@ -39,6 +39,9 @@ redis_reachable() { "$MAGI" redis status >/dev/null 2>&1; }
 STATE_DIR="${MAGI_CODEX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/magi-codex}"
 SESSIONS_DIR="$STATE_DIR/sessions"
 SESSION_ID="$(json_string session_id)"
+if [ -z "$SESSION_ID" ]; then
+  SESSION_ID="${CODEX_THREAD_ID:-${CODEX_SESSION_ID:-}}"
+fi
 
 if ! redis_reachable && truthy "${MAGI_CODEX_AUTOSTART_REDIS:-}"; then
   "$MAGI" redis start >/dev/null 2>&1 || true

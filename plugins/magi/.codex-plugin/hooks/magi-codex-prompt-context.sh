@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+#
+# UserPromptSubmit hook for the magi Codex plugin.
+#
+# Emits a small magi-system status block before each prompt is processed so the
+# agent can see its current session id, active magi identity, team, Redis state,
+# and whether a SessionStart record exists.
+set -uo pipefail
+
+HOOK_INPUT="$(cat 2>/dev/null || true)"
+
+MAGI="${MAGI_BIN:-}"
+[ -n "$MAGI" ] || MAGI="$(command -v magi 2>/dev/null || true)"
+if [ -z "$MAGI" ]; then
+  for c in "$HOME/.agents/skills/magi/bin/magi" "$HOME/.local/bin/magi"; do
+    [ -x "$c" ] && MAGI="$c" && break
+  done
+fi
+
+sanitize() { printf '%s' "${1:-}" | tr -d '"\\\n\r' ; }
+
+json_string() {
+  printf '%s' "$HOOK_INPUT" |
+    sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" |
+    head -1
+}
+
+STATE_DIR="${MAGI_CODEX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/magi-codex}"
+SESSIONS_DIR="$STATE_DIR/sessions"
+SESSION_ID="$(json_string session_id)"
+if [ -z "$SESSION_ID" ]; then
+  SESSION_ID="${CODEX_THREAD_ID:-${CODEX_SESSION_ID:-}}"
+fi
+
+redis_state="unavailable"
+agent=""
+team=""
+if { [ -n "$MAGI" ] && [ -x "$MAGI" ]; }; then
+  if "$MAGI" redis status >/dev/null 2>&1; then
+    redis_state="reachable"
+  else
+    redis_state="DOWN"
+  fi
+  agent="$(sanitize "$("$MAGI" config get identity.active_agent 2>/dev/null)")"
+  team="$(sanitize "$("$MAGI" config get identity.active_team 2>/dev/null)")"
+fi
+
+session_record="missing"
+session_key="$(printf '%s' "$SESSION_ID" | tr -cd 'A-Za-z0-9._-')"
+if [ -n "$session_key" ]; then
+  session_file="$SESSIONS_DIR/$session_key.agent"
+  if [ -f "$session_file" ]; then
+    session_record="$(sanitize "$(sed -n '1p' "$session_file" 2>/dev/null)")"
+    [ -n "$session_record" ] || session_record="present"
+  fi
+fi
+
+ctx="magi-system context. session_id: ${SESSION_ID:-unset}; agent: ${agent:-unset}; team: ${team:-unset}; redis: ${redis_state}; session_record: ${session_record}; state_dir: $(sanitize "$STATE_DIR")."
+printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' "$ctx"
+exit 0
