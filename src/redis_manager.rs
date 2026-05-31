@@ -9,12 +9,12 @@
 //! 2. A locally installed `redis-server` daemon, used as a fallback when Docker
 //!    is unavailable or fails to start.
 //!
-//! The public `start` / `status` / `stop` entry points are thin wrappers around
-//! their `*_with_runtime` counterparts. The split exists so tests can inject a
-//! fake `RedisRuntime` and exercise the orchestration logic without touching
-//! Docker, spawning processes, or talking to a real Redis. The chosen backend,
-//! bind address, and generated connection URL are persisted into the `magi`
-//! `AppConfig` so later commands can reach the same instance.
+//! The public `start` / `status` / `stop` / `reset` entry points are thin
+//! wrappers around their `*_with_runtime` counterparts. The split exists so
+//! tests can inject a fake `RedisRuntime` and exercise the orchestration logic
+//! without touching Docker, spawning processes, or talking to a real Redis. The
+//! chosen backend, bind address, and generated connection URL are persisted into
+//! the `magi` `AppConfig` so later commands can reach the same instance.
 //!
 //! Security and state-layout notes that this module is responsible for:
 //! - Managed Redis data, runtime, and config files live under `~/.magi` and are
@@ -270,6 +270,21 @@ pub async fn stop() -> Result<()> {
     stop_with_runtime(&paths, &config, &mut runtime).await
 }
 
+/// CLI entry point for `magi redis reset`.
+///
+/// Stops managed Redis, deletes persisted Redis data under `~/.magi/redis/data`,
+/// recreates the data directory, and starts managed Redis again. External Redis
+/// is operator-owned and is never modified.
+pub async fn reset() -> Result<()> {
+    let paths = ConfigPaths::from_env()?;
+    let config = AppConfig::load_from_paths(&paths)?;
+    let mut runtime = RealRedisRuntime;
+
+    reset_with_runtime(&paths, config, &mut runtime).await?;
+    println!("Redis reset complete");
+    Ok(())
+}
+
 /// Runtime-injectable core of `start`: choose a bind address, derive auth,
 /// start managed Redis, and persist the outcome into `config`.
 ///
@@ -452,6 +467,29 @@ pub async fn stop_with_runtime(
     }
 
     Ok(())
+}
+
+/// Runtime-injectable core of `reset`.
+///
+/// Reset is intentionally scoped to managed Redis only. It stops the current
+/// managed backend, clears the owned persistence directory, recreates it, and
+/// starts Redis again with the existing bind/port/password configuration.
+pub async fn reset_with_runtime(
+    paths: &ConfigPaths,
+    config: AppConfig,
+    runtime: &mut impl RedisRuntime,
+) -> Result<AppConfig> {
+    if config.redis.mode == RedisMode::External {
+        println!("Redis is configured as external; nothing to reset");
+        return Ok(config);
+    }
+
+    stop_with_runtime(paths, &config, runtime).await?;
+    if paths.redis_data_dir.exists() {
+        fs::remove_dir_all(&paths.redis_data_dir)?;
+    }
+    fs::create_dir_all(&paths.redis_data_dir)?;
+    start_with_runtime(paths, config, false, None, runtime).await
 }
 
 /// Build the `docker run` plan for the Docker-backed managed Redis container.

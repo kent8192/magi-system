@@ -60,6 +60,22 @@ fi
 MAGI_PLUGIN_REPO="${MAGI_PLUGIN_REPO:-$SCRIPT_DIR}"
 MAGI_PLUGIN_MARKETPLACE="${MAGI_PLUGIN_MARKETPLACE:-magi}"
 
+find_codex_cli() {
+  local candidate
+  local seen=":"
+  while IFS= read -r candidate; do
+    case "$seen" in
+      *":$candidate:"*) continue ;;
+    esac
+    seen="$seen$candidate:"
+    if "$candidate" plugin --help >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done < <(type -P -a codex 2>/dev/null || true)
+  return 1
+}
+
 install_claude_plugin() {
   if ! command -v claude >/dev/null 2>&1; then
     echo "skip: claude CLI not found; not installing the magi-agent Claude Code plugin"
@@ -71,8 +87,8 @@ install_claude_plugin() {
   # Refresh the marketplace before updating so existing plugin installs can pick
   # up the repository's current published version.
   claude plugin marketplace update "$MAGI_PLUGIN_MARKETPLACE" >/dev/null 2>&1 || true
-  if claude plugin update "magi-agent" --scope user; then
-    echo "  updated magi-agent (restart Claude Code to load it)"
+  if claude plugin update "magi-agent@$MAGI_PLUGIN_MARKETPLACE" --scope user; then
+    echo "  updated magi-agent@$MAGI_PLUGIN_MARKETPLACE (restart Claude Code to load it)"
   elif claude plugin install "magi-agent@$MAGI_PLUGIN_MARKETPLACE" --scope user; then
     echo "  installed magi-agent@$MAGI_PLUGIN_MARKETPLACE (restart Claude Code to load it)"
   else
@@ -81,21 +97,26 @@ install_claude_plugin() {
 }
 
 install_codex_plugin() {
-  if ! command -v codex >/dev/null 2>&1; then
-    echo "skip: codex CLI not found; not installing the magi Codex plugin"
+  local codex_cli
+  if ! codex_cli="$(find_codex_cli)"; then
+    if command -v codex >/dev/null 2>&1; then
+      echo "skip: codex CLI found but plugin commands are unavailable; not installing the magi Codex plugin"
+    else
+      echo "skip: codex CLI not found; not installing the magi Codex plugin"
+    fi
     return 0
   fi
   echo "installing or updating the magi plugin in Codex..."
-  codex plugin marketplace add "$MAGI_PLUGIN_REPO" || true
-  codex plugin marketplace update "$MAGI_PLUGIN_MARKETPLACE" >/dev/null 2>&1 || true
-  if codex plugin update "magi@$MAGI_PLUGIN_MARKETPLACE"; then
-    echo "  updated magi@$MAGI_PLUGIN_MARKETPLACE"
-  elif codex plugin update "magi"; then
-    echo "  updated magi"
-  elif codex plugin add "magi@$MAGI_PLUGIN_MARKETPLACE"; then
+  # Codex keeps the existing root when a marketplace name is already present, so
+  # replace the source first to ensure this checkout is what gets installed.
+  "$codex_cli" plugin marketplace remove "$MAGI_PLUGIN_MARKETPLACE" >/dev/null 2>&1 || true
+  "$codex_cli" plugin marketplace add "$MAGI_PLUGIN_REPO" >/dev/null 2>&1 || true
+  "$codex_cli" plugin marketplace upgrade "$MAGI_PLUGIN_MARKETPLACE" >/dev/null 2>&1 || true
+  "$codex_cli" plugin remove "magi@$MAGI_PLUGIN_MARKETPLACE" >/dev/null 2>&1 || true
+  if "$codex_cli" plugin add "magi@$MAGI_PLUGIN_MARKETPLACE" >/dev/null 2>&1; then
     echo "  installed magi@$MAGI_PLUGIN_MARKETPLACE"
   else
-    echo "warning: failed to add or update magi@$MAGI_PLUGIN_MARKETPLACE in Codex" >&2
+    echo "warning: failed to add magi@$MAGI_PLUGIN_MARKETPLACE in Codex" >&2
   fi
 }
 

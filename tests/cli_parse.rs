@@ -6,7 +6,7 @@
 //!
 //! Coverage areas:
 //! - No-subcommand invocation (falls through to interactive REPL mode).
-//! - `redis` subcommands: `start` (with and without `--lan`/`--bind`), `status`, `stop`.
+//! - `redis` subcommands: `start` (with and without `--lan`/`--bind`), `status`, `stop`, `reset`.
 //! - `invite` subcommands: `create` (explicit and default TTL), `list`, `revoke`.
 //! - `team` subcommands: `create`, `list`, `members` (with and without `--team` filter).
 //! - `send` (multi-word message tail, missing-message rejection).
@@ -80,6 +80,18 @@ fn parses_redis_stop() {
     }) = cli.command
     else {
         panic!("expected redis stop");
+    };
+}
+
+#[test]
+fn parses_redis_reset() {
+    let cli = Cli::try_parse_from(["magi", "redis", "reset"]).expect("parse");
+
+    let Some(Command::Redis {
+        command: RedisCommand::Reset,
+    }) = cli.command
+    else {
+        panic!("expected redis reset");
     };
 }
 

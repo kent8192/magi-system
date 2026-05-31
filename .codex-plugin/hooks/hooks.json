@@ -1,0 +1,31 @@
+{
+  "description": "Codex session-scoped magi agent lifecycle.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$PLUGIN_ROOT/hooks/magi-codex-session-start.sh\"",
+            "timeout": 5,
+            "statusMessage": "Registering magi Codex agent"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$PLUGIN_ROOT/hooks/magi-codex-session-end.sh\"",
+            "timeout": 5,
+            "statusMessage": "Cleaning up magi Codex agent"
+          }
+        ]
+      }
+    ]
+  }
+}

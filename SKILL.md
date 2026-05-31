@@ -12,6 +12,7 @@ Use the Rust CLI. Do not read or edit `~/.magi` files directly.
 ```bash
 ~/.agents/skills/magi/bin/magi              # interactive mode
 ~/.agents/skills/magi/bin/magi redis start  # Docker first, redis-server fallback
+~/.agents/skills/magi/bin/magi redis reset  # clear managed Redis data and restart
 ~/.agents/skills/magi/bin/magi team create <team>
 ~/.agents/skills/magi/bin/magi invite create --team <team>
 ~/.agents/skills/magi/bin/magi join --invite <token>
