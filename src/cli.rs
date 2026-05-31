@@ -81,10 +81,10 @@ pub enum Command {
 
     /// Manage ephemeral, session-scoped agents.
     ///
-    /// `spawn` registers a uniquely named agent (a `<adjective>-<magi>`
-    /// codename) into the active team and adopts it as the active identity;
-    /// `despawn` removes it again. Intended to be driven by a session lifecycle
-    /// (e.g. a Claude Code SessionStart/SessionEnd hook).
+    /// `name` prints the current session-aware agent name. `spawn` registers a
+    /// uniquely named agent (a `<adjective>-<magi>` codename) into the active
+    /// team; `despawn` removes it again.
+    /// Intended to be driven by a session lifecycle hook.
     Agent {
         #[command(subcommand)]
         command: AgentCommand,
@@ -210,10 +210,15 @@ pub enum TeamCommand {
 /// Subcommands for ephemeral session-scoped agent management.
 #[derive(Debug, Subcommand)]
 pub enum AgentCommand {
+    /// Print the current agent name.
+    ///
+    /// Session records are the source of truth for the current MAGI agent, so
+    /// concurrent sessions report their own names.
+    Name,
     /// Spawn a uniquely named ephemeral agent into the active team.
     ///
-    /// Assigns the next `<adjective>-<magi>` codename, registers it, sets it as
-    /// `identity.active_agent`, and prints the assigned name.
+    /// Assigns the next `<adjective>-<magi>` codename, registers it, and prints
+    /// the assigned name.
     Spawn {
         /// Team to join; defaults to the configured active team when omitted.
         #[arg(long)]
@@ -224,13 +229,13 @@ pub enum AgentCommand {
     },
     /// Remove an ephemeral agent from a team.
     ///
-    /// Defaults the team to the active team and the name to the active agent.
+    /// Defaults the team to the active team and the name to the session agent.
     /// Removing an agent that is already gone is treated as success.
     Despawn {
         /// Team to remove from; defaults to the configured active team.
         #[arg(long)]
         team: Option<String>,
-        /// Agent name to remove; defaults to the configured active agent.
+        /// Agent name to remove; defaults to the current session agent.
         #[arg(long)]
         name: Option<String>,
     },

@@ -71,14 +71,14 @@ pub struct MessageRecord {
 /// CLI entry point for `magi send`: deliver a message to another agent.
 ///
 /// Loads the persisted `AppConfig`, resolves the active team and the
-/// active agent (used as the sender), joins the `message` words into a
+/// session agent (used as the sender), joins the `message` words into a
 /// single space-separated body, and appends it to the team stream. On
 /// success a confirmation line `sent <id> <from> -> <to>` is printed.
 ///
 /// # Errors
 ///
 /// Returns an error if the config cannot be loaded, if `redis.url`,
-/// `identity.active_team`, or `identity.active_agent` are unset, if either
+/// `identity.active_team`, or the current session agent are unset, if either
 /// the sender or recipient is not a registered team agent, or if the body
 /// is empty (see `send_message_with_url`).
 pub async fn send(to: String, message: Vec<String>) -> Result<()> {
@@ -86,8 +86,8 @@ pub async fn send(to: String, message: Vec<String>) -> Result<()> {
     let url = configured_redis_url(&config)?;
     let identity = resolve_identity(&config);
     let team = active_team(&identity)?;
-    // The active agent is always the sender for the interactive `send` command.
-    let from = active_agent(&identity)?;
+    // The session agent is always the sender for the interactive `send` command.
+    let from = session_agent(&identity)?;
     // Join the variadic CLI words back into a single message body.
     let body = message.join(" ");
 
@@ -101,7 +101,7 @@ pub async fn send(to: String, message: Vec<String>) -> Result<()> {
 
 /// CLI entry point for `magi inbox`: print and consume unread messages.
 ///
-/// Reads every message addressed to the active agent that arrived after
+/// Reads every message addressed to the session agent that arrived after
 /// its last read cursor, prints each on one line, and advances the cursor
 /// so the next call only returns newer traffic (`InboxReadMode::MarkRead`).
 ///
@@ -114,7 +114,7 @@ pub async fn inbox() -> Result<()> {
     let url = configured_redis_url(&config)?;
     let identity = resolve_identity(&config);
     let team = active_team(&identity)?;
-    let agent = active_agent(&identity)?;
+    let agent = session_agent(&identity)?;
 
     // MarkRead advances this agent's cursor, so consumed messages are not
     // shown again on the next `inbox` invocation.
@@ -457,14 +457,14 @@ fn active_team(identity: &ActiveIdentity) -> Result<String> {
         .ok_or_else(|| MagiError::InvalidConfig("identity.active_team is required".to_string()))
 }
 
-/// Extract the active agent name, or fail if `identity.active_agent` is unset.
+/// Extract the session agent name, or fail if no session agent is available.
 ///
 /// # Errors
 ///
-/// Returns `MagiError::InvalidConfig` when no active agent is configured.
-fn active_agent(identity: &ActiveIdentity) -> Result<String> {
+/// Returns `MagiError::InvalidConfig` when no session agent is configured.
+fn session_agent(identity: &ActiveIdentity) -> Result<String> {
     identity
         .agent
         .clone()
-        .ok_or_else(|| MagiError::InvalidConfig("identity.active_agent is required".to_string()))
+        .ok_or_else(|| MagiError::InvalidConfig("session agent is required".to_string()))
 }

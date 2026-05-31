@@ -29,6 +29,7 @@ use crate::config::AppConfig;
 use crate::error::{MagiError, Result};
 use crate::model::RedisKeys;
 use crate::redis_client;
+use crate::session_identity::resolve_identity;
 
 /// A single agent's membership within a team, as reconstructed from Redis.
 ///
@@ -57,8 +58,8 @@ pub struct TeamMember {
 ///
 /// This is the entry point for the `magi team create` subcommand. It loads the
 /// local `AppConfig`, resolves the configured Redis URL, and derives the
-/// owner name from the active agent identity (falling back to `"owner"` when no
-/// active agent is set). On success it prints a confirmation line.
+/// owner name from the current session identity (falling back to `"owner"` when
+/// no session agent is set). On success it prints a confirmation line.
 ///
 /// # Errors
 ///
@@ -68,14 +69,11 @@ pub struct TeamMember {
 pub async fn create(name: String) -> Result<()> {
     let config = AppConfig::load()?;
     let url = configured_redis_url(&config)?;
-    // Use the active agent identity as the team owner; default to "owner" when
-    // no identity has been configured yet.
-    let owner = config
-        .identity
-        .active_agent
-        .as_deref()
-        .unwrap_or("owner")
-        .to_string();
+    // Use the session agent identity as the team owner; default to "owner"
+    // when the command is run outside a spawned session.
+    let owner = resolve_identity(&config)
+        .agent
+        .unwrap_or_else(|| "owner".to_string());
 
     create_team_with_url(&url, &name, &owner).await?;
     println!("Created team: {name}");

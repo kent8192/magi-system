@@ -62,17 +62,17 @@ fn random_adjective_is_deterministic_and_clean() {
 
 // --- Pure naming-core tests (no Redis required) ---
 
-/// The suffix must cycle melchior -> balthasar -> caspar and wrap, driven by a
+/// The suffix must cycle melchior -> balthasar -> casper and wrap, driven by a
 /// 1-based monotonic sequence number.
 #[test]
 fn magi_suffix_cycles_in_fixed_order() {
-    assert_eq!(MAGI_SUFFIXES, ["melchior", "balthasar", "caspar"]);
+    assert_eq!(MAGI_SUFFIXES, ["melchior", "balthasar", "casper"]);
     assert_eq!(magi_suffix(1), "melchior");
     assert_eq!(magi_suffix(2), "balthasar");
-    assert_eq!(magi_suffix(3), "caspar");
+    assert_eq!(magi_suffix(3), "casper");
     assert_eq!(magi_suffix(4), "melchior");
     assert_eq!(magi_suffix(5), "balthasar");
-    assert_eq!(magi_suffix(6), "caspar");
+    assert_eq!(magi_suffix(6), "casper");
 }
 
 /// A `seq` of 0 (never produced by `INCR`, but guarded) maps to the first unit.
@@ -111,7 +111,7 @@ fn candidate_names_uses_cycle_suffix_and_appends_fallback() {
     let names = candidate_names(3, 1, || adjectives.next().unwrap());
     assert_eq!(
         names,
-        vec!["solo-caspar".to_string(), "back-caspar-3".to_string()]
+        vec!["solo-casper".to_string(), "back-casper-3".to_string()]
     );
 }
 
@@ -141,7 +141,7 @@ async fn spawn_assigns_cyclic_magi_suffixes(#[future(awt)] redis_fixture: RedisF
 
     assert!(first.ends_with("-melchior"), "first was {first}");
     assert!(second.ends_with("-balthasar"), "second was {second}");
-    assert!(third.ends_with("-caspar"), "third was {third}");
+    assert!(third.ends_with("-casper"), "third was {third}");
 
     let members = list_members_with_url(url, &team)
         .await

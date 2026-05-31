@@ -72,7 +72,7 @@ as a disposable agent that joins on start and leaves on end.
 Names are `<adjective>-<magi>`:
 
 - The `<magi>` suffix cycles deterministically through the three MAGI units —
-  `melchior`, `balthasar`, `caspar` — selected by `(<seq> - 1) % 3`, where
+  `melchior`, `balthasar`, `casper` — selected by `(<seq> - 1) % 3`, where
   `<seq>` is an atomic `INCR` of `magi:team:<team>:agent_seq`. The counter is
   monotonic and never decremented, so the cycle keeps advancing regardless of
   despawns rather than depending on the current member count.
@@ -85,18 +85,17 @@ Uniqueness is enforced by claiming each candidate with an atomic `SADD` to
 
 The Claude Code `magi-agent` plugin and the Codex `magi` plugin both drive this
 lifecycle from session hooks. SessionStart spawns an agent (recording
-`<name, team, prev-agent>` keyed by the runtime session id under the runtime
-state dir) and SessionEnd despawns it and restores the previously active
-identity. Claude Code uses `MAGI_AGENT_EPHEMERAL=0` to opt out; Codex uses
-`MAGI_CODEX_EPHEMERAL=0`.
+`<name, team>` keyed by the runtime session id under the runtime state dir) and
+SessionEnd despawns it. Claude Code uses `MAGI_AGENT_EPHEMERAL=0` to opt out;
+Codex uses `MAGI_CODEX_EPHEMERAL=0`.
 
 Interactive messaging commands resolve identity in two layers. When a runtime
 session id is available (`MAGI_SESSION_ID`, `CODEX_THREAD_ID`,
 `CODEX_SESSION_ID`, or `CLAUDE_SESSION_ID`), `send`, `inbox`, `history`, and
 `watch` first read the matching session record under the Codex or Claude Code
-state directory. Only when no record exists do they fall back to the global
-`identity.active_agent` / `identity.active_team` config values. This keeps
-concurrent sessions in one `$HOME` speaking as their own spawned agent names.
+state directory. If no record exists, there is no agent-name fallback; commands
+that need an agent fail instead of reusing another session's name. The team can
+still fall back to `identity.active_team`.
 
 The Codex plugin also injects a compact UserPromptSubmit context block before
 each prompt with the resolved session id, active magi agent, active team, Redis

@@ -2,8 +2,8 @@
 #
 # SessionEnd hook for the magi Codex plugin.
 #
-# Removes the session-scoped Codex agent created by SessionStart and restores
-# the previously active identity. All teardown is best effort.
+# Removes the session-scoped Codex agent created by SessionStart. All teardown
+# is best effort.
 set -uo pipefail
 
 HOOK_INPUT="$(cat 2>/dev/null || true)"
@@ -36,13 +36,11 @@ session_file="$SESSIONS_DIR/$(printf '%s' "$SESSION_ID" | tr -cd 'A-Za-z0-9._-')
 
 name="$(sed -n '1p' "$session_file" 2>/dev/null || true)"
 team="$(sed -n '2p' "$session_file" 2>/dev/null || true)"
-prev_agent="$(sed -n '3p' "$session_file" 2>/dev/null || true)"
 
 if [ -n "$name" ] && [ -n "$team" ]; then
   "$MAGI" agent despawn --team "$team" --name "$name" >/dev/null 2>&1 || true
 fi
 
-"$MAGI" config set identity.active_agent "$prev_agent" >/dev/null 2>&1 || true
 rm -f "$session_file" 2>/dev/null || true
 
 exit 0

@@ -40,7 +40,7 @@ magi send ──▶ Redis Pub/Sub ──▶ `magi watch --format json`
   / `MAGI_AGENT_AUTOSTART_BRIDGE`). It also spawns an ephemeral, uniquely named
   MAGI agent for the session (`magi agent spawn`) unless `MAGI_AGENT_EPHEMERAL=0`.
 - `hooks/magi-session-end.sh` — a SessionEnd hook that despawns the ephemeral
-  agent (`magi agent despawn`) and restores the prior `identity.active_agent`.
+  agent (`magi agent despawn`).
 - Sibling skill `magi-messaging` — manual magi CLI usage (send/inbox/history) in-session.
 
 The Claude Agent SDK is installed into `lib/node_modules` by `setup`; the daemon's
@@ -50,8 +50,8 @@ pid and log live under `${XDG_STATE_HOME:-~/.local/state}/magi-agent/`.
 
 ```bash
 magi redis start                                   # backend must be reachable
-magi config set identity.active_agent <you>        # the agent the bridge speaks as
 magi config set identity.active_team <team>
+export MAGI_AGENT_SELF=<you>                       # the agent the bridge speaks as
 
 /magi-system setup     # one-time: npm installs the Claude Agent SDK into lib/
 /magi-system start     # launches the daemon
@@ -88,7 +88,7 @@ turn's response boundary is unambiguous.
 | Variable | Default | Meaning |
 |---|---|---|
 | `MAGI_BIN` | `magi` on PATH | Path to the magi binary |
-| `MAGI_AGENT_SELF` | `identity.active_agent` | Agent name the bridge speaks as |
+| `MAGI_AGENT_SELF` | required | Agent name the bridge speaks as |
 | `MAGI_AGENT_TEAM` | `identity.active_team` | Active team (for `team` scope) |
 | `MAGI_AGENT_SCOPE` | `direct` | `direct` (to me) or `team` (to me or my team) |
 | `MAGI_AGENT_AUTO_REPLY` | `1` | Send the reply back (`0` = process only, no send) |
@@ -113,7 +113,7 @@ prefer a narrow `MAGI_AGENT_ALLOWED_TOOLS` set and a non-interactive
 ## Troubleshooting
 
 - `start` fails immediately → run `/magi-system status` and read the log tail; usual
-  causes are `identity.active_agent` unset or `magi redis status` unreachable.
+  causes are `MAGI_AGENT_SELF` unset or `magi redis status` unreachable.
 - No replies → check scope/allowlist, and confirm the sender isn't your own agent
   name (self-messages are ignored by design).
 - Verify the SDK loop in the foreground with `/magi-system run` (Ctrl-C to stop).

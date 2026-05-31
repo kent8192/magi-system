@@ -132,7 +132,7 @@ cmd_status() {
   fi
   local magi="${MAGI_BIN:-$(command -v magi || true)}"
   if [ -n "$magi" ]; then
-    echo "  self  : $("$magi" config get identity.active_agent 2>/dev/null)"
+    echo "  self  : ${MAGI_AGENT_SELF:-}"
     echo "  team  : $("$magi" config get identity.active_team 2>/dev/null)"
   fi
   echo "  node  : $(command -v "$NODE_BIN" >/dev/null 2>&1 && "$NODE_BIN" -v || echo 'not found')"

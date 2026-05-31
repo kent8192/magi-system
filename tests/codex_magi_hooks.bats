@@ -10,8 +10,6 @@ setup() {
   export HOME="$TEST_HOME"
   export MAGI_CODEX_STATE_DIR="$TEST_HOME/state"
 
-  ACTIVE_AGENT_FILE="$TEST_HOME/active_agent"
-  printf 'kent8192' >"$ACTIVE_AGENT_FILE"
   CALLS="$TEST_HOME/calls.log"
   : >"$CALLS"
 
@@ -21,18 +19,20 @@ setup() {
 [ "\$1 \$2" = "redis status" ] && exit 0
 if [ "\$1" = "config" ] && [ "\$2" = "get" ]; then
   case "\$3" in
-    identity.active_agent) cat "$ACTIVE_AGENT_FILE" 2>/dev/null ;;
     identity.active_team) printf 'testteam' ;;
   esac
   exit 0
 fi
-if [ "\$1" = "config" ] && [ "\$2" = "set" ] && [ "\$3" = "identity.active_agent" ]; then
-  printf '%s' "\$4" >"$ACTIVE_AGENT_FILE"; exit 0
-fi
 if [ "\$1" = "agent" ] && [ "\$2" = "spawn" ]; then
   echo "spawn \$*" >>"$CALLS"
-  printf '%s' "quiet-melchior" >"$ACTIVE_AGENT_FILE"
   printf 'quiet-melchior\n'; exit 0
+fi
+if [ "\$1" = "agent" ] && [ "\$2" = "name" ]; then
+  session="\${CODEX_THREAD_ID:-\${CODEX_SESSION_ID:-}}"
+  if [ -n "\$session" ] && [ -f "$MAGI_CODEX_STATE_DIR/sessions/\$session.agent" ]; then
+    sed -n '1p' "$MAGI_CODEX_STATE_DIR/sessions/\$session.agent"
+  fi
+  exit 0
 fi
 if [ "\$1" = "agent" ] && [ "\$2" = "despawn" ]; then
   echo "despawn \$*" >>"$CALLS"; exit 0
@@ -47,7 +47,7 @@ teardown() {
   rm -rf "$TEST_HOME"
 }
 
-@test "Codex SessionStart spawns a MAGI agent and adopts the identity" {
+@test "Codex SessionStart spawns a MAGI agent and records it" {
   run bash "$HOOKS/magi-codex-session-start.sh" <<<'{"session_id":"codex-1","cwd":"/tmp/project","hook_event_name":"SessionStart"}'
   [ "$status" -eq 0 ]
   [[ "$output" == *"agent: quiet-melchior"* ]]
@@ -56,18 +56,16 @@ teardown() {
   [ -f "$file" ]
   [ "$(sed -n '1p' "$file")" = "quiet-melchior" ]
   [ "$(sed -n '2p' "$file")" = "testteam" ]
-  [ "$(sed -n '3p' "$file")" = "kent8192" ]
-  [ "$(cat "$ACTIVE_AGENT_FILE")" = "quiet-melchior" ]
+  [ "$(sed -n '3p' "$file")" = "" ]
 }
 
-@test "Codex SessionEnd despawns the session agent and restores identity" {
+@test "Codex SessionEnd despawns the session agent" {
   bash "$HOOKS/magi-codex-session-start.sh" <<<'{"session_id":"codex-2","cwd":"/tmp/project","hook_event_name":"SessionStart"}'
   run bash "$HOOKS/magi-codex-session-end.sh" <<<'{"session_id":"codex-2","cwd":"/tmp/project","hook_event_name":"SessionEnd"}'
   [ "$status" -eq 0 ]
 
   [ ! -f "$MAGI_CODEX_STATE_DIR/sessions/codex-2.agent" ]
   grep -q "despawn agent despawn --team testteam --name quiet-melchior" "$CALLS"
-  [ "$(cat "$ACTIVE_AGENT_FILE")" = "kent8192" ]
 }
 
 @test "Codex SessionStart fired twice for one session spawns only once" {
@@ -84,7 +82,6 @@ teardown() {
   local file="$MAGI_CODEX_STATE_DIR/sessions/thread-1.agent"
   [ -f "$file" ]
   [ "$(sed -n '1p' "$file")" = "quiet-melchior" ]
-  [ "$(cat "$ACTIVE_AGENT_FILE")" = "quiet-melchior" ]
 }
 
 @test "Codex SessionEnd falls back to CODEX_THREAD_ID when payload has no session_id" {
@@ -94,12 +91,11 @@ teardown() {
 
   [ ! -f "$MAGI_CODEX_STATE_DIR/sessions/thread-2.agent" ]
   grep -q "despawn agent despawn --team testteam --name quiet-melchior" "$CALLS"
-  [ "$(cat "$ACTIVE_AGENT_FILE")" = "kent8192" ]
 }
 
 @test "Codex UserPromptSubmit injects current magi context" {
   mkdir -p "$MAGI_CODEX_STATE_DIR/sessions"
-  printf 'quiet-melchior\ntestteam\nkent8192\n' >"$MAGI_CODEX_STATE_DIR/sessions/thread-3.agent"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_CODEX_STATE_DIR/sessions/thread-3.agent"
 
   CODEX_THREAD_ID=thread-3 run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
   [ "$status" -eq 0 ]
@@ -123,7 +119,7 @@ teardown() {
   [ -f "$file" ]
   [ "$(sed -n '1p' "$file")" = "quiet-melchior" ]
   [ "$(sed -n '2p' "$file")" = "testteam" ]
-  [ "$(sed -n '3p' "$file")" = "kent8192" ]
+  [ "$(sed -n '3p' "$file")" = "" ]
   grep -q "spawn agent spawn --type codex" "$CALLS"
 }
 

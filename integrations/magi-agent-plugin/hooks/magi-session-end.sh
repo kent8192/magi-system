@@ -3,12 +3,11 @@
 # SessionEnd hook for the magi-agent plugin.
 #
 # Counterpart to magi-session-start.sh: when a Claude Code session ends, this
-# removes the ephemeral, session-scoped magi agent that SessionStart spawned and
-# restores the previously active identity.
+# removes the ephemeral, session-scoped magi agent that SessionStart spawned.
 #
 # It reads the per-session record written by SessionStart
-# ($STATE_DIR/sessions/<session_id>.agent), despawns that agent, restores the
-# prior identity.active_agent, and deletes the record. Every step is best
+# ($STATE_DIR/sessions/<session_id>.agent), despawns that agent, and deletes the
+# record. Every step is best
 # effort: a missing record, an unreachable Redis, or an already-removed agent
 # never causes the hook to fail.
 #
@@ -44,19 +43,14 @@ SESSION_ID="$(json_string session_id)"
 session_file="$SESSIONS_DIR/$(printf '%s' "$SESSION_ID" | tr -cd 'A-Za-z0-9._-').agent"
 [ -f "$session_file" ] || exit 0
 
-# Three positional lines: agent name, team, previous active_agent.
+# Two positional lines: agent name and team.
 name="$(sed -n '1p' "$session_file" 2>/dev/null || true)"
 team="$(sed -n '2p' "$session_file" 2>/dev/null || true)"
-prev_agent="$(sed -n '3p' "$session_file" 2>/dev/null || true)"
 
 # Remove the ephemeral agent from its team (idempotent; tolerates absence).
 if [ -n "$name" ] && [ -n "$team" ]; then
   "$MAGI" agent despawn --team "$team" --name "$name" >/dev/null 2>&1 || true
 fi
-
-# Restore the identity that was active before this session spawned its agent.
-# An empty previous value clears the override back to unset.
-"$MAGI" config set identity.active_agent "$prev_agent" >/dev/null 2>&1 || true
 
 # Drop the per-session record now that it has been acted on.
 rm -f "$session_file" 2>/dev/null || true

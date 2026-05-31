@@ -75,6 +75,8 @@ async fn main() -> Result<()> {
 
         // --- Ephemeral session-scoped agents ---
         Some(Command::Agent { command }) => match command {
+            // Print the current session-aware agent name.
+            AgentCommand::Name => magi::agent::name(),
             // Spawn a uniquely named ephemeral agent into the active team.
             AgentCommand::Spawn { team, agent_type } => magi::agent::spawn(team, agent_type).await,
             // Remove an ephemeral agent from the team.

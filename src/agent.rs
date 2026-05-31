@@ -5,7 +5,7 @@
 //! session end. To keep those agents recognizable while still unique, each one
 //! is given a codename of the form `<adjective>-<magi>`, where `<magi>` cycles
 //! deterministically through the three MAGI deliberation units from
-//! *Neon Genesis Evangelion* — Melchior, Balthasar, Caspar — and `<adjective>`
+//! *Neon Genesis Evangelion* — Melchior, Balthasar, Casper — and `<adjective>`
 //! is drawn at random from a vetted word list.
 //!
 //! The naming core in this module is deliberately pure and side-effect free so
@@ -15,10 +15,11 @@
 
 use redis::AsyncCommands;
 
-use crate::config::{AppConfig, ConfigPaths};
+use crate::config::AppConfig;
 use crate::error::{MagiError, Result};
 use crate::model::RedisKeys;
 use crate::redis_client;
+use crate::session_identity::resolve_identity;
 use crate::team;
 
 /// Number of `<adjective>-<suffix>` candidates tried before the guaranteed
@@ -29,7 +30,7 @@ const MAX_NAME_ATTEMPTS: usize = 16;
 const DEFAULT_AGENT_TYPE: &str = "claude-code";
 
 /// The three MAGI deliberation units, in the fixed cycle order used for naming.
-pub const MAGI_SUFFIXES: [&str; 3] = ["melchior", "balthasar", "caspar"];
+pub const MAGI_SUFFIXES: [&str; 3] = ["melchior", "balthasar", "casper"];
 
 /// Draws a single random adjective from the bundled `petname` word list.
 ///
@@ -53,7 +54,7 @@ pub fn random_adjective(rng: &mut impl rand::Rng) -> String {
 /// Returns the MAGI suffix for a 1-based monotonic sequence number.
 ///
 /// `seq` is expected to come from a Redis `INCR` (which starts at 1), so the
-/// first agent is `melchior`, the second `balthasar`, the third `caspar`, and
+/// first agent is `melchior`, the second `balthasar`, the third `casper`, and
 /// the fourth wraps back to `melchior`. A `seq` of 0 is treated as 1.
 pub fn magi_suffix(seq: u64) -> &'static str {
     // `seq` is 1-based; map it onto the cycle. `saturating_sub` guards a 0 input
@@ -66,6 +67,27 @@ pub fn magi_suffix(seq: u64) -> &'static str {
 /// Composes an agent name from an `adjective` and a MAGI `suffix`.
 pub fn compose_name(adjective: &str, suffix: &str) -> String {
     format!("{adjective}-{suffix}")
+}
+
+/// CLI entry point for `magi agent name`.
+///
+/// Resolves the current process identity the same way messaging commands do:
+/// runtime session records keyed by `MAGI_SESSION_ID`, `CODEX_THREAD_ID`,
+/// `CODEX_SESSION_ID`, or `CLAUDE_SESSION_ID`. Runtime session records are the
+/// only source for the session agent; the agent name is never read from or
+/// written to persistent config.
+///
+/// # Errors
+///
+/// Returns `MagiError::InvalidConfig` when no session agent can be resolved.
+pub fn name() -> Result<()> {
+    let config = AppConfig::load()?;
+    let identity = resolve_identity(&config);
+    let agent = identity
+        .agent
+        .ok_or_else(|| MagiError::InvalidConfig("session agent is required".to_string()))?;
+    println!("{agent}");
+    Ok(())
 }
 
 /// Builds the ordered list of candidate names to try for sequence `seq`.
@@ -205,16 +227,15 @@ fn configured_redis_url(config: &AppConfig) -> Result<String> {
 /// CLI entry point for `magi agent spawn`.
 ///
 /// Resolves the team (explicit `team` or the active team), spawns a uniquely
-/// named ephemeral agent, sets `identity.active_agent` to the new name so that
-/// in-session `magi` commands and the bridge act as it, and prints the assigned
-/// name on its own line for hooks to capture.
+/// named ephemeral agent and prints the assigned name on its own line for hooks
+/// to capture in the per-session record.
 ///
 /// # Errors
 ///
 /// Returns `MagiError::InvalidConfig` when neither a team argument nor an active
 /// team is available, and propagates config, Redis, and registration errors.
 pub async fn spawn(team: Option<String>, agent_type: Option<String>) -> Result<()> {
-    let mut config = AppConfig::load()?;
+    let config = AppConfig::load()?;
     let url = configured_redis_url(&config)?;
     let team = team
         .or_else(|| config.identity.active_team.clone())
@@ -225,12 +246,6 @@ pub async fn spawn(team: Option<String>, agent_type: Option<String>) -> Result<(
     let mut rng = rand::rng();
     let name = spawn_with_url(&url, &team, &agent_type, &project, &mut rng).await?;
 
-    // Adopt the new identity so the rest of the CLI (and the bridge) speak as
-    // this freshly spawned agent.
-    config.identity.active_agent = Some(name.clone());
-    let paths = ConfigPaths::from_env()?;
-    config.save_to_paths(&paths)?;
-
     // Print only the name so callers (e.g. the SessionStart hook) can capture it.
     println!("{name}");
     Ok(())
@@ -238,9 +253,10 @@ pub async fn spawn(team: Option<String>, agent_type: Option<String>) -> Result<(
 
 /// CLI entry point for `magi agent despawn`.
 ///
-/// Resolves the team and the agent name (each from the argument or the active
-/// identity) and removes the agent. Removal is idempotent: despawning an agent
-/// that is already gone succeeds, so a repeated SessionEnd hook never fails.
+/// Resolves the team and the agent name (from the argument or the current
+/// session identity) and removes the agent. Removal is idempotent: despawning
+/// an agent that is already gone succeeds, so a repeated SessionEnd hook never
+/// fails.
 ///
 /// # Errors
 ///
@@ -249,11 +265,12 @@ pub async fn spawn(team: Option<String>, agent_type: Option<String>) -> Result<(
 pub async fn despawn(team: Option<String>, name: Option<String>) -> Result<()> {
     let config = AppConfig::load()?;
     let url = configured_redis_url(&config)?;
+    let identity = resolve_identity(&config);
     let team = team
-        .or_else(|| config.identity.active_team.clone())
+        .or(identity.team)
         .ok_or_else(|| MagiError::InvalidConfig("identity.active_team is required".to_string()))?;
     let name = name
-        .or_else(|| config.identity.active_agent.clone())
+        .or(identity.agent)
         .ok_or_else(|| MagiError::InvalidConfig("agent name is required".to_string()))?;
 
     match despawn_with_url(&url, &team, &name).await {

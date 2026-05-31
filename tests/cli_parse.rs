@@ -409,6 +409,17 @@ fn parses_agent_spawn_defaults_to_none() {
 }
 
 #[test]
+fn parses_agent_name() {
+    let cli = Cli::try_parse_from(["magi", "agent", "name"]).expect("parse");
+    let Some(Command::Agent {
+        command: AgentCommand::Name,
+    }) = cli.command
+    else {
+        panic!("expected agent name");
+    };
+}
+
+#[test]
 fn parses_agent_despawn_with_team_and_name() {
     let cli = Cli::try_parse_from([
         "magi",

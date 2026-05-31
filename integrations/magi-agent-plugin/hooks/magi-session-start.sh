@@ -79,7 +79,7 @@ else
   redis_state="DOWN"
 fi
 
-agent="$(sanitize "$("$MAGI" config get identity.active_agent 2>/dev/null)")"
+agent=""
 team="$(sanitize "$("$MAGI" config get identity.active_team 2>/dev/null)")"
 
 # --- Ephemeral session agent (opt-out with MAGI_AGENT_EPHEMERAL=0) ------------
@@ -100,13 +100,11 @@ if [ -n "$SESSION_ID" ]; then
 fi
 if ephemeral_on && [ "$redis_state" = "reachable" ] && [ -n "$team" ] \
   && [ -n "$session_file" ] && [ ! -f "$session_file" ]; then
-  prev_agent="$agent"
   spawned="$(sanitize "$("$MAGI" agent spawn --type claude-code 2>/dev/null | tail -n1)")"
   if [ -n "$spawned" ]; then
     mkdir -p "$SESSIONS_DIR" 2>/dev/null || true
-    # Three positional lines: agent name, team, previous active_agent (may be
-    # empty). SessionEnd reads these back to despawn and restore the identity.
-    printf '%s\n%s\n%s\n' "$spawned" "$team" "$prev_agent" >"$session_file" 2>/dev/null || true
+    # Two positional lines: agent name and team.
+    printf '%s\n%s\n' "$spawned" "$team" >"$session_file" 2>/dev/null || true
     agent="$spawned"
   fi
 fi

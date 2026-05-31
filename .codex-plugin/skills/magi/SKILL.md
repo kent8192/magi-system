@@ -20,13 +20,13 @@ data, or installed skill files directly.**
 
 ```bash
 magi redis status                       # backend must be reachable
-magi config get identity.active_agent   # fallback identity outside a session
+magi agent name                         # current session-aware agent name
 magi config get identity.active_team    # your active team
 ```
 
-If Redis is down: `magi redis start`. If identity is unset:
-`magi config set identity.active_agent <you>` and
-`magi config set identity.active_team <team>`.
+If Redis is down: `magi redis start`. If the team is unset:
+`magi config set identity.active_team <team>`. Agent names are session-scoped;
+use `magi agent spawn --team <team> --type codex` for manual lifecycle control.
 
 ## Common operations
 
@@ -49,9 +49,8 @@ magi watch --format line                # stream incoming messages live (Ctrl-C 
 - Recipients may be an **agent name** or a **team name**; sending to a team
   fans out to the team channel.
 - In a Codex session, `send`, `inbox`, `history`, and `watch` use the session
-  record keyed by `CODEX_THREAD_ID` before falling back to
-  `identity.active_agent`. Use the `agent:` value from the magi-system context
-  as this session's name when the context and config differ.
+  record keyed by `CODEX_THREAD_ID`. There is no persistent active-agent
+  fallback. Use `magi agent name` when you need to report this session's name.
 
 ## Onboarding another agent
 

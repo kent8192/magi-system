@@ -8,7 +8,7 @@
 //!   variable (see `ConfigPaths`).
 //! - Loading, defaulting, and saving the `AppConfig` document
 //!   (`~/.magi/config.toml`), which records Redis connection settings, the
-//!   active identity (team / agent), and SSH tunnel preferences.
+//!   active team, and SSH tunnel preferences.
 //! - Reading and writing individual config keys via the `magi config get` /
 //!   `magi config set` CLI subcommands (see `get` and `set`).
 //! - Enforcing private (owner-only) filesystem permissions on the config file
@@ -182,9 +182,8 @@ impl AppConfig {
     /// Read a single config value by its dotted key (e.g. `redis.port`).
     ///
     /// Supports the keys exposed via `magi config get`:
-    /// `redis.url`, `redis.bind`, `redis.port`, `identity.active_team`, and
-    /// `identity.active_agent`. Unset optional values are returned as the
-    /// empty string.
+    /// `redis.url`, `redis.bind`, `redis.port`, and `identity.active_team`.
+    /// Unset optional values are returned as the empty string.
     ///
     /// # Errors
     ///
@@ -199,12 +198,6 @@ impl AppConfig {
             "identity.active_team" => self
                 .identity
                 .active_team
-                .as_deref()
-                .unwrap_or("")
-                .to_string(),
-            "identity.active_agent" => self
-                .identity
-                .active_agent
                 .as_deref()
                 .unwrap_or("")
                 .to_string(),
@@ -238,7 +231,6 @@ impl AppConfig {
                 self.redis.port = parse_port(key, value)?;
             }
             "identity.active_team" => self.identity.active_team = non_empty_value(value),
-            "identity.active_agent" => self.identity.active_agent = non_empty_value(value),
             _ => {
                 return Err(MagiError::NotFound(format!(
                     "unsupported config key `{key}`"
@@ -295,17 +287,15 @@ pub enum RedisMode {
     External,
 }
 
-/// The active messaging identity: which team and agent the CLI acts as.
+/// The active team selected for commands that do not receive `--team`.
 ///
-/// Both fields are optional because a fresh install has no identity until the
-/// invite-based onboarding flow selects one.
+/// The active agent is intentionally not stored in persistent config; runtime
+/// sessions resolve their agent name from session records.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct IdentityConfig {
     /// Name of the currently selected team, or `None` if unset.
     pub active_team: Option<String>,
-    /// Name of the currently selected agent, or `None` if unset.
-    pub active_agent: Option<String>,
 }
 
 /// SSH tunnel settings for reaching a Redis instance on a remote host.

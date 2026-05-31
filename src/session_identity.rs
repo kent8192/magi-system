@@ -1,9 +1,9 @@
 //! Runtime session identity resolution for interactive agent sessions.
 //!
 //! Session hooks create a small record keyed by the runtime session id. When a
-//! `magi` command is executed inside that session, the record must override the
-//! global `identity.active_*` values so concurrent sessions do not speak as the
-//! last session that happened to update the persistent config.
+//! `magi` command is executed inside that session, the record supplies the
+//! agent name. Persistent config stores only the active team, so concurrent
+//! sessions cannot overwrite each other's agent identity.
 
 use std::env;
 use std::fs;
@@ -35,7 +35,7 @@ where
 {
     let mut identity = ActiveIdentity {
         team: config.identity.active_team.clone(),
-        agent: config.identity.active_agent.clone(),
+        agent: None,
     };
 
     if let Some(session) = session_identity_from_env(&mut env) {

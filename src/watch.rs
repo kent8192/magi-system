@@ -36,7 +36,7 @@ use crate::session_identity::resolve_identity;
 /// # Errors
 ///
 /// Returns `MagiError::InvalidConfig` if `redis.url`, the resolved active team,
-/// or the resolved active agent are absent. Propagates any Redis connectivity
+/// or the resolved session agent are absent. Propagates any Redis connectivity
 /// errors returned by the event loop.
 pub async fn run(format: WatchFormat) -> Result<()> {
     let config = AppConfig::load()?;
@@ -51,7 +51,7 @@ pub async fn run(format: WatchFormat) -> Result<()> {
         .ok_or_else(|| MagiError::InvalidConfig("identity.active_team is required".to_string()))?;
     let agent = identity
         .agent
-        .ok_or_else(|| MagiError::InvalidConfig("identity.active_agent is required".to_string()))?;
+        .ok_or_else(|| MagiError::InvalidConfig("session agent is required".to_string()))?;
 
     watch_loop_with_url(&url, &team, &agent, format).await
 }
