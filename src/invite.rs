@@ -40,6 +40,7 @@ use crate::config::AppConfig;
 use crate::error::{MagiError, Result};
 use crate::model::RedisKeys;
 use crate::redis_client;
+use crate::session_identity::resolve_identity;
 use crate::team;
 
 /// Result of successfully minting a new invite via `create_invite_with_url`.
@@ -72,7 +73,7 @@ pub struct InviteSummary {
     pub invite_id: String,
     /// Team the invite belongs to.
     pub team: String,
-    /// Identity that created the invite (the owner / active agent).
+    /// Identity that created the invite (the owner / session agent).
     pub created_by: String,
     /// Creation time as a Unix-seconds string.
     pub created_at: String,
@@ -105,8 +106,9 @@ type RawInviteSummary = (
 /// CLI entry point for `magi invite create`: mints an invite and prints its token.
 ///
 /// Loads the application config, resolves the configured Redis URL, derives the
-/// creator identity from the active agent (falling back to `"owner"`), parses the
-/// human-readable `ttl` (e.g. `"24h"`), and delegates to `create_invite_with_url`.
+/// creator identity from the session agent (falling back to `"owner"`), parses
+/// the human-readable `ttl` (e.g. `"24h"`), and delegates to
+/// `create_invite_with_url`.
 /// Only the secret token is printed to stdout — it is shown once and not stored.
 ///
 /// # Errors
@@ -116,14 +118,11 @@ type RawInviteSummary = (
 pub async fn create(team: String, ttl: String) -> Result<()> {
     let config = AppConfig::load()?;
     let url = configured_redis_url(&config)?;
-    // Attribute the invite to the active agent when one is configured;
-    // otherwise fall back to a generic "owner" label.
-    let created_by = config
-        .identity
-        .active_agent
-        .as_deref()
-        .unwrap_or("owner")
-        .to_string();
+    // Attribute the invite to the session agent when present; otherwise fall
+    // back to a generic "owner" label.
+    let created_by = resolve_identity(&config)
+        .agent
+        .unwrap_or_else(|| "owner".to_string());
     let ttl = parse_ttl(&ttl)?;
     let invite = create_invite_with_url(&url, &team, &created_by, ttl).await?;
 
@@ -191,7 +190,7 @@ pub async fn revoke(invite_id: String) -> Result<()> {
 
 /// CLI entry point for `magi join`: redeems an invite token to join a team.
 ///
-/// Derives the joining agent's name from the active identity (defaulting to
+/// Derives the joining agent's name from the session identity (defaulting to
 /// `"agent"`) and records the current working directory as the project context.
 /// The agent type is currently hard-coded to `"codex"`. Delegates the atomic
 /// consume-and-register flow to `join_with_url`.
@@ -204,13 +203,10 @@ pub async fn revoke(invite_id: String) -> Result<()> {
 pub async fn join(invite: String) -> Result<()> {
     let config = AppConfig::load()?;
     let url = configured_redis_url(&config)?;
-    // Name the joining agent from the active identity, defaulting to "agent".
-    let agent = config
-        .identity
-        .active_agent
-        .as_deref()
-        .unwrap_or("agent")
-        .to_string();
+    // Name the joining agent from the session identity, defaulting to "agent".
+    let agent = resolve_identity(&config)
+        .agent
+        .unwrap_or_else(|| "agent".to_string());
     // Record the directory the command was run in as the agent's project path.
     let project = std::env::current_dir()?.display().to_string();
 

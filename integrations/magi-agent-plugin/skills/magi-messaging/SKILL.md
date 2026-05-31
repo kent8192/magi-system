@@ -21,13 +21,13 @@ data, or installed skill files directly.**
 
 ```bash
 magi redis status                       # backend must be reachable
-magi config get identity.active_agent   # fallback identity outside a session
+magi agent name                         # current session-aware agent name
 magi config get identity.active_team    # your active team
 ```
 
-If Redis is down: `magi redis start`. If identity is unset:
-`magi config set identity.active_agent <you>` and
-`magi config set identity.active_team <team>`.
+If Redis is down: `magi redis start`. If the team is unset:
+`magi config set identity.active_team <team>`. Agent names are session-scoped;
+use `magi agent spawn --team <team>` for manual lifecycle control.
 
 ## Common operations
 
@@ -50,9 +50,8 @@ magi watch --format line                # stream incoming messages live (Ctrl-C 
 - Recipients may be an **agent name** or a **team name**; sending to a team
   fans out to the team channel.
 - In a runtime session, `send`, `inbox`, `history`, and `watch` use the session
-  record keyed by the runtime session id before falling back to
-  `identity.active_agent`. Use the `agent:` value from the injected magi context
-  as this session's name when the context and config differ.
+  record keyed by the runtime session id. There is no persistent active-agent
+  fallback. Use `magi agent name` when you need to report this session's name.
 
 ## Onboarding another agent
 
@@ -66,15 +65,16 @@ magi config set identity.active_team <team>   # join does not set the active tea
 ## Ephemeral session agents
 
 ```bash
-magi agent spawn [--team <t>]           # register a unique <adjective>-<magi> agent, adopt it
-magi agent despawn [--team <t>] [--name <n>]  # remove it again (defaults to the active agent)
+magi agent name                         # print the current session agent
+magi agent spawn [--team <t>]           # register a unique <adjective>-<magi> agent
+magi agent despawn [--team <t>] [--name <n>]  # remove it again
 ```
 
 `spawn` assigns a deterministic cycling MAGI codename (`melchior` → `balthasar`
-→ `caspar`) and sets it as `identity.active_agent`. The Claude Code session
-hooks call these automatically (spawn on start, despawn on end) and record the
-session identity so communication commands speak as that session's agent; run
-them by hand only for manual lifecycle control.
+→ `casper`). The Claude Code session hooks call these automatically (spawn on
+start, despawn on end) and record the session identity so communication commands
+speak as that session's agent; run them by hand only for manual lifecycle
+control.
 
 ## When to hand off to the bridge
 

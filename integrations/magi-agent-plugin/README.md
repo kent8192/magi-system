@@ -12,7 +12,7 @@ delivery is instant rather than polled.
 ## Requirements
 
 - [`magi`](https://github.com/kent8192/magi) installed and a reachable Redis
-  (`magi redis status`), with `identity.active_agent` set.
+  (`magi redis status`), with `MAGI_AGENT_SELF` set for the bridge daemon.
 - The `claude` CLI on `PATH` (the SDK drives it; uses your existing Claude auth).
 - Node.js ≥ 22.18 (runs the TypeScript bridge via native type-stripping) and npm.
 
@@ -64,7 +64,7 @@ magi-agent-plugin/
 ├── hooks/
 │   ├── hooks.json               # SessionStart + SessionEnd hook registration
 │   ├── magi-session-start.sh    # startup: report state, spawn an ephemeral agent
-│   └── magi-session-end.sh      # shutdown: despawn the agent, restore identity
+│   └── magi-session-end.sh      # shutdown: despawn the agent
 └── skills/
     ├── magi-agent/SKILL.md      # the autonomous bridge
     └── magi-messaging/SKILL.md  # manual magi CLI usage in-session
@@ -84,20 +84,17 @@ and it never boots Redis or the bridge unless you opt in:
 
 When Redis is reachable and `identity.active_team` is set, the SessionStart hook
 also spawns a fresh, uniquely named MAGI agent for the session (`magi agent
-spawn`) — e.g. `quiet-melchior` — and adopts it as the active identity. The
-assigned name, team, and the previously active identity are recorded under the
-daemon state dir keyed by the Claude session id. On session end,
-`hooks/magi-session-end.sh` despawns that agent (`magi agent despawn`) and
-restores the previous identity.
+spawn`) — e.g. `quiet-melchior`. The assigned name and team are recorded under
+the daemon state dir keyed by the Claude session id. On session end,
+`hooks/magi-session-end.sh` despawns that agent (`magi agent despawn`).
 
 This is on by default; disable it with `MAGI_AGENT_EPHEMERAL=0`. Spawning is
 idempotent per session (a re-fired SessionStart does not create duplicates), and
 both hooks are best-effort — they never block session start or end.
 
-Messaging commands resolve the session record before the global active identity,
-so concurrent sessions in one `$HOME` can send, read, and watch as their own
-spawned MAGI agent names. The global `identity.active_agent` backup/restore is
-kept as a fallback for commands outside a runtime session.
+Messaging commands use the session record for their agent identity, so
+concurrent sessions in one `$HOME` can send, read, and watch as their own
+spawned MAGI agent names. There is no persistent active-agent fallback.
 
 If magi is not installed, the hooks exit silently.
 

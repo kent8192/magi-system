@@ -10,7 +10,7 @@
 //! * A pre-existing symlink at the config path is atomically replaced by a real
 //!   file so that the saved config cannot escape its isolation boundary.
 //! * Round-trip serialisation (`save_to_paths` → `load_from_paths`) is lossless
-//!   for all supported fields, including identity state.
+//!   for all supported fields, including selected team state.
 //! * Loading a missing config auto-creates a valid default on disk.
 //! * Group- or world-readable config files are rejected with `MagiError::InvalidConfig`
 //!   (prevents credential leakage on shared systems).
@@ -47,7 +47,6 @@ fn default_config_uses_localhost_redis() {
     assert_eq!(config.redis.bind, "127.0.0.1");
     assert_eq!(config.redis.port, 6379);
     assert_eq!(config.identity.active_team, None);
-    assert_eq!(config.identity.active_agent, None);
     assert!(!config.ssh.enabled);
     assert_eq!(config.ssh.host, "");
     assert_eq!(config.ssh.local_port, 6379);
@@ -135,16 +134,15 @@ fn save_replaces_existing_config_symlink_with_private_file() {
 }
 
 /// Confirms that all config fields survive a save/load round trip without loss
-/// or corruption, including non-default identity fields.
+/// or corruption, including non-default team selection.
 #[test]
-fn round_trips_config_including_identity() {
+fn round_trips_config_including_active_team() {
     let (_temp, paths) = temp_paths();
     let mut config = AppConfig::default();
     config.redis.url = Some("redis://127.0.0.1:6380".to_string());
     config.redis.mode = RedisMode::External;
     config.redis.port = 6380;
     config.identity.active_team = Some("core".to_string());
-    config.identity.active_agent = Some("alice".to_string());
 
     config.save_to_paths(&paths).expect("save");
     let loaded = AppConfig::load_from_paths(&paths).expect("load");
@@ -237,9 +235,6 @@ fn set_get_supported_keys() {
     config
         .set_value("identity.active_team", "core")
         .expect("set active team");
-    config
-        .set_value("identity.active_agent", "alice")
-        .expect("set active agent");
 
     assert_eq!(
         config.get_value("redis.url").expect("get redis.url"),
@@ -258,11 +253,5 @@ fn set_get_supported_keys() {
             .get_value("identity.active_team")
             .expect("get active team"),
         "core"
-    );
-    assert_eq!(
-        config
-            .get_value("identity.active_agent")
-            .expect("get active agent"),
-        "alice"
     );
 }

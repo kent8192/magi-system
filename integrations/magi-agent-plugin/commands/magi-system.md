@@ -28,8 +28,8 @@ Steps:
 
 Notes:
 - First-time use requires `setup` once (npm installs the Claude Agent SDK into the plugin's `lib/`; needs Node ≥ 22.18).
-- The bridge requires a reachable magi Redis (`magi redis status`) and a set
-  `identity.active_agent`. If `start` fails, run `magi redis start` and verify
-  `magi config get identity.active_agent`, then retry.
+- The bridge requires a reachable magi Redis (`magi redis status`) and
+  `MAGI_AGENT_SELF`. If `start` fails, run `magi redis start` and set
+  `MAGI_AGENT_SELF`, then retry.
 - Behavior is tuned with environment variables documented in the `magi-agent`
   skill (scope, auto-reply, allowed tools, system prompt, model).

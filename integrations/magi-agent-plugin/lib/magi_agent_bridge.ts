@@ -136,11 +136,11 @@ function magiConfigGet(magiBin: string, key: string): string {
 
 function loadConfig(): Config {
   const magiBin = resolveMagiBin();
-  const selfAgent = process.env.MAGI_AGENT_SELF || magiConfigGet(magiBin, "identity.active_agent");
+  const selfAgent = process.env.MAGI_AGENT_SELF || "";
   const selfTeam = process.env.MAGI_AGENT_TEAM || magiConfigGet(magiBin, "identity.active_team");
   if (!selfAgent) {
     throw new Error(
-      "identity.active_agent is not set; run `magi config set identity.active_agent <name>` first",
+      "MAGI_AGENT_SELF is required; persistent active-agent config has been removed",
     );
   }
 

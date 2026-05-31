@@ -3,8 +3,8 @@
 # SessionStart hook for the magi Codex plugin.
 #
 # When Redis is reachable and an active team is set, this hook registers a
-# session-scoped Codex agent (`magi agent spawn --type codex`), records the
-# previous active identity, and emits a concise SessionStart context line.
+# session-scoped Codex agent (`magi agent spawn --type codex`) and emits a
+# concise SessionStart context line.
 # Disable the lifecycle with MAGI_CODEX_EPHEMERAL=0.
 set -uo pipefail
 
@@ -57,7 +57,7 @@ else
   redis_state="DOWN"
 fi
 
-agent="$(sanitize "$("$MAGI" config get identity.active_agent 2>/dev/null)")"
+agent=""
 team="$(sanitize "$("$MAGI" config get identity.active_team 2>/dev/null)")"
 
 ephemeral_on() {
@@ -74,11 +74,10 @@ fi
 
 if ephemeral_on && [ "$redis_state" = "reachable" ] && [ -n "$team" ] \
   && [ -n "$session_file" ] && [ ! -f "$session_file" ]; then
-  prev_agent="$agent"
   spawned="$(sanitize "$("$MAGI" agent spawn --type codex 2>/dev/null | tail -n1)")"
   if [ -n "$spawned" ]; then
     mkdir -p "$SESSIONS_DIR" 2>/dev/null || true
-    printf '%s\n%s\n%s\n' "$spawned" "$team" "$prev_agent" >"$session_file" 2>/dev/null || true
+    printf '%s\n%s\n' "$spawned" "$team" >"$session_file" 2>/dev/null || true
     agent="$spawned"
   fi
 fi

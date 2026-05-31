@@ -48,7 +48,7 @@ if { [ -n "$MAGI" ] && [ -x "$MAGI" ]; }; then
   else
     redis_state="DOWN"
   fi
-  agent="$(sanitize "$("$MAGI" config get identity.active_agent 2>/dev/null)")"
+  agent="$(sanitize "$("$MAGI" agent name 2>/dev/null)")"
   team="$(sanitize "$("$MAGI" config get identity.active_team 2>/dev/null)")"
 fi
 
@@ -67,11 +67,10 @@ fi
 
 if [ "$session_record" = "missing" ] && ephemeral_on \
   && [ "$redis_state" = "reachable" ] && [ -n "$team" ] && [ -n "$session_file" ]; then
-  prev_agent="$agent"
   spawned="$(sanitize "$("$MAGI" agent spawn --type codex 2>/dev/null | tail -n1)")"
   if [ -n "$spawned" ]; then
     mkdir -p "$SESSIONS_DIR" 2>/dev/null || true
-    printf '%s\n%s\n%s\n' "$spawned" "$team" "$prev_agent" >"$session_file" 2>/dev/null || true
+    printf '%s\n%s\n' "$spawned" "$team" >"$session_file" 2>/dev/null || true
     session_record="$spawned"
     session_team="$team"
   fi

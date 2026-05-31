@@ -62,9 +62,9 @@ it and run `/magi-system setup`.
 
 ```bash
 ~/.local/bin/magi redis start
-~/.local/bin/magi config set identity.active_agent alice
 ~/.local/bin/magi team create core
 ~/.local/bin/magi config set identity.active_team core
+~/.local/bin/magi agent spawn --team core --type codex
 ~/.local/bin/magi invite create --team core
 ```
 
@@ -72,9 +72,10 @@ On another agent:
 
 ```bash
 ~/.local/bin/magi config set redis.url <redis-url>
-~/.local/bin/magi config set identity.active_agent bob
 ~/.local/bin/magi join --invite <token>
-~/.local/bin/magi send alice "hello from bob"
+~/.local/bin/magi config set identity.active_team core
+~/.local/bin/magi agent spawn --team core --type codex
+~/.local/bin/magi send <agent-name> "hello"
 ```
 
 ## Commands
@@ -89,6 +90,7 @@ magi invite create --team <team> [--ttl 24h]
 magi invite list --team <team>
 magi invite revoke <invite_id>
 magi join --invite <token>
+magi agent name
 magi agent spawn [--team <team>] [--type <type>]
 magi agent despawn [--team <team>] [--name <agent>]
 magi send <agent> <message>
@@ -100,11 +102,11 @@ magi config get <key>
 magi config set <key> <value>
 ```
 
-Inside a runtime session, `send`, `inbox`, `history`, and `watch` prefer the
-session record keyed by the runtime session id over the global
-`identity.active_agent` / `identity.active_team` fallback. This lets concurrent
-Codex or Claude Code sessions in the same `$HOME` communicate as their own
-spawned MAGI agent names.
+Inside a runtime session, `send`, `inbox`, `history`, and `watch` require the
+session record keyed by the runtime session id for the agent name, while the
+team comes from that record or `identity.active_team`. Persistent config never
+stores an active agent, so concurrent Codex or Claude Code sessions in the same
+`$HOME` cannot overwrite each other's MAGI agent names.
 
 ## Redis
 
