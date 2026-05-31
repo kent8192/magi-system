@@ -1,6 +1,6 @@
 {
-  "name": "magi-dev",
-  "description": "Development marketplace for the magi cross-agent messaging plugins (Claude Code and Codex).",
+  "name": "magi",
+  "description": "Marketplace for the magi cross-agent messaging plugins (Claude Code and Codex).",
   "owner": {
     "name": "kent8192"
   },

@@ -43,12 +43,12 @@ confirm() {
 }
 
 # --- Remove the magi plugins from Claude Code and Codex (best effort) ---
-# These plugins are registered from the repository "magi-dev" marketplace:
+# These plugins are registered from the repository "magi" marketplace:
 #   - magi-agent in Claude Code
 #   - magi in Codex
 # Removal runs independently of the managed skill directory below, so orphaned
 # plugin registrations are always cleaned up, and it never aborts the uninstall.
-MAGI_PLUGIN_MARKETPLACE="${MAGI_PLUGIN_MARKETPLACE:-magi-dev}"
+MAGI_PLUGIN_MARKETPLACE="${MAGI_PLUGIN_MARKETPLACE:-magi}"
 PLUGINS_REMOVED=false
 
 remove_agent_plugins() {

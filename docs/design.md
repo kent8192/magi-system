@@ -6,16 +6,19 @@
 - State directory: `~/.magi`
 - Install locations: `~/.agents/skills/magi/bin/magi`, `~/.local/bin/magi`
 - Codex plugin surface: `.codex-plugin/plugin.json` with `skills/magi/`
-  mirroring the installed Codex skill instructions.
+  mirroring the installed Codex skill instructions. The marketplace wrapper at
+  `plugins/magi/.codex-plugin/` mirrors those files because Codex marketplace
+  sources must point at a plugin directory.
 - Claude Code plugin surface: `integrations/magi-agent-plugin/` (the event-driven
   `magi-agent` bridge) with its own `.claude-plugin/` manifests.
 - Plugin distribution: the repository-root `.claude-plugin/marketplace.json`
-  exposes the `magi-dev` marketplace listing both plugins (`magi` for Codex,
-  `magi-agent` for Claude Code). `install.sh` and `uninstall.sh` register and
-  remove these through the `claude plugin` and `codex plugin` CLIs on a
-  best-effort basis (skipped when the CLI is absent). Re-running `install.sh`
-  refreshes the marketplace and updates existing plugin installs before falling
-  back to a first-time install.
+  exposes the Claude Code `magi` marketplace, while
+  `.agents/plugins/marketplace.json` exposes the Codex `magi` marketplace and
+  points at `plugins/magi`. `install.sh` and `uninstall.sh` register and remove
+  these through the `claude plugin` and `codex plugin` CLIs on a best-effort
+  basis (skipped when the CLI is absent). Re-running `install.sh` refreshes the
+  marketplace and updates existing plugin installs before falling back to a
+  first-time install.
 - Redis lifecycle: Docker first, `redis-server` fallback
 - Durable messaging: Redis Streams
 - Wakeups: Redis Pub/Sub
