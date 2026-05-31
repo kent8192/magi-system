@@ -13,7 +13,9 @@
   exposes the `magi-dev` marketplace listing both plugins (`magi` for Codex,
   `magi-agent` for Claude Code). `install.sh` and `uninstall.sh` register and
   remove these through the `claude plugin` and `codex plugin` CLIs on a
-  best-effort basis (skipped when the CLI is absent).
+  best-effort basis (skipped when the CLI is absent). Re-running `install.sh`
+  refreshes the marketplace and updates existing plugin installs before falling
+  back to a first-time install.
 - Redis lifecycle: Docker first, `redis-server` fallback
 - Durable messaging: Redis Streams
 - Wakeups: Redis Pub/Sub
