@@ -51,16 +51,14 @@ fi
 "$LOCAL_CLI" install
 
 # --- Install the magi plugins into Claude Code and Codex (best effort) ---
-# Both CLIs resolve the "magi-dev" marketplace from this repository's root
-# manifest (.claude-plugin/marketplace.json) and install the plugin that
-# targets their runtime:
+# Both CLIs resolve the "magi" marketplace from this checkout and install the
+# plugin that targets their runtime:
 #   - magi-agent → Claude Code (the event-driven bridge under integrations/)
 #   - magi       → Codex (the Redis-backed messaging skill at the repo root)
-# The marketplace is fetched from the GitHub repository, so the plugins must be
-# published on the repository's default branch. Each step is best effort: if the
-# CLI is absent or a command fails, the magi binary install above is unaffected.
-MAGI_PLUGIN_REPO="${MAGI_PLUGIN_REPO:-kent8192/magi}"
-MAGI_PLUGIN_MARKETPLACE="${MAGI_PLUGIN_MARKETPLACE:-magi-dev}"
+# MAGI_PLUGIN_REPO can point at a GitHub repository for release installs, but
+# the default is local so repository checkouts install the manifests being run.
+MAGI_PLUGIN_REPO="${MAGI_PLUGIN_REPO:-$SCRIPT_DIR}"
+MAGI_PLUGIN_MARKETPLACE="${MAGI_PLUGIN_MARKETPLACE:-magi}"
 
 install_claude_plugin() {
   if ! command -v claude >/dev/null 2>&1; then

@@ -19,20 +19,20 @@ delivery is instant rather than polled.
 ## Install
 
 The repository-root `./install.sh` registers this plugin automatically (best
-effort) from the GitHub `magi-dev` marketplace:
+effort) from the current checkout's `magi` marketplace:
 
 ```bash
-claude plugin marketplace add kent8192/magi
-claude plugin install magi-agent@magi-dev
+claude plugin marketplace add /absolute/path/to/magi
+claude plugin install magi-agent@magi
 # restart Claude Code
 ```
 
-For local development against an unpublished checkout, add the plugin directory
-itself as the marketplace instead:
+For development on this plugin in isolation, add the plugin directory itself as
+the marketplace instead:
 
 ```bash
 /plugin marketplace add /absolute/path/to/magi/integrations/magi-agent-plugin
-/plugin install magi-agent@magi-dev
+/plugin install magi-agent@magi
 # restart Claude Code
 ```
 
@@ -54,7 +54,7 @@ Or call the controller directly: `integrations/magi-agent-plugin/bin/magi-agentd
 magi-agent-plugin/
 ├── .claude-plugin/
 │   ├── plugin.json              # plugin manifest
-│   └── marketplace.json         # local dev marketplace ("magi-dev")
+│   └── marketplace.json         # local marketplace ("magi")
 ├── bin/magi-agentd              # lifecycle controller (setup/start/stop/status/logs/run)
 ├── lib/
 │   ├── magi_agent_bridge.ts     # the bridge (TypeScript, run via Node type-stripping)

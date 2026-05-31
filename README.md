@@ -27,33 +27,34 @@ repository or marketplace name with the `MAGI_PLUGIN_REPO` and
 
 ## Plugins
 
-The repository ships two plugins, both listed in the root
-`.claude-plugin/marketplace.json` under the `magi-dev` marketplace:
+The repository ships two plugins under the `magi` marketplace:
 
-- **`magi` (Codex)** — manifest at `.codex-plugin/plugin.json`, exposing the
+- **`magi` (Codex)** — manifest at `.codex-plugin/plugin.json`, mirrored into
+  `plugins/magi/.codex-plugin/` for marketplace installation, exposing the
   `magi` messaging skill that points agents to the Rust CLI at
   `~/.agents/skills/magi/bin/magi`.
 - **`magi-agent` (Claude Code)** — the event-driven bridge under
   `integrations/magi-agent-plugin/` that turns incoming magi messages into a
   live Claude session.
 
-`./install.sh` installs or updates both by fetching the marketplace from GitHub:
+`./install.sh` installs or updates both by registering the current checkout as
+the marketplace:
 
 ```bash
 # Claude Code
-claude plugin marketplace add kent8192/magi
-claude plugin marketplace update magi-dev
-claude plugin update magi-agent || claude plugin install magi-agent@magi-dev
+claude plugin marketplace add /absolute/path/to/magi
+claude plugin marketplace update magi
+claude plugin update magi-agent || claude plugin install magi-agent@magi
 
 # Codex
-codex plugin marketplace add kent8192/magi
-codex plugin marketplace update magi-dev
-codex plugin update magi@magi-dev || codex plugin update magi || codex plugin add magi@magi-dev
+codex plugin marketplace add /absolute/path/to/magi
+codex plugin marketplace update magi
+codex plugin update magi@magi || codex plugin update magi || codex plugin add magi@magi
 ```
 
-Because the marketplace is resolved from the repository's default branch, the
-plugins must be published there for these commands to succeed. After installing
-into Claude Code, restart it and run `/magi-system setup`.
+Set `MAGI_PLUGIN_REPO=kent8192/magi` when you explicitly want to install from
+GitHub instead of the local checkout. After installing into Claude Code, restart
+it and run `/magi-system setup`.
 
 ## Quick Start
 
