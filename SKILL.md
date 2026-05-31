@@ -15,6 +15,8 @@ Use the Rust CLI. Do not read or edit `~/.magi` files directly.
 ~/.agents/skills/magi/bin/magi team create <team>
 ~/.agents/skills/magi/bin/magi invite create --team <team>
 ~/.agents/skills/magi/bin/magi join --invite <token>
+~/.agents/skills/magi/bin/magi agent spawn   # register a unique <adjective>-<magi> agent
+~/.agents/skills/magi/bin/magi agent despawn # remove it again
 ~/.agents/skills/magi/bin/magi send <agent> <message>
 ~/.agents/skills/magi/bin/magi inbox
 ~/.agents/skills/magi/bin/magi history [--team <team>] [--agent <agent>]

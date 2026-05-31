@@ -62,25 +62,44 @@ magi-agent-plugin/
 │   └── node_modules/            # installed by `setup` (gitignored)
 ├── commands/magi-system.md      # /magi-system slash command
 ├── hooks/
-│   ├── hooks.json               # SessionStart hook registration
-│   └── magi-session-start.sh    # startup: report (and optionally boot) the magi system
+│   ├── hooks.json               # SessionStart + SessionEnd hook registration
+│   ├── magi-session-start.sh    # startup: report state, spawn an ephemeral agent
+│   └── magi-session-end.sh      # shutdown: despawn the agent, restore identity
 └── skills/
     ├── magi-agent/SKILL.md      # the autonomous bridge
     └── magi-messaging/SKILL.md  # manual magi CLI usage in-session
 ```
 
-## Startup hook
+## Session lifecycle hooks
 
 On every Claude Code session start the plugin runs `hooks/magi-session-start.sh`,
 which detects the magi system state (Redis reachable? identity set? bridge up?)
-and injects a one-line status as session context. It is **report-only by
-default** — it never consumes your inbox and never boots anything unless you
-opt in:
+and injects a one-line status as session context. It never consumes your inbox,
+and it never boots Redis or the bridge unless you opt in:
 
 - `MAGI_AGENT_AUTOSTART_REDIS=1` — start managed Redis at session start if it is down.
 - `MAGI_AGENT_AUTOSTART_BRIDGE=1` — start the `/magi-system` bridge daemon at session start.
 
-If magi is not installed, the hook exits silently.
+### Ephemeral session agent
+
+When Redis is reachable and `identity.active_team` is set, the SessionStart hook
+also spawns a fresh, uniquely named MAGI agent for the session (`magi agent
+spawn`) — e.g. `quiet-melchior` — and adopts it as the active identity. The
+assigned name, team, and the previously active identity are recorded under the
+daemon state dir keyed by the Claude session id. On session end,
+`hooks/magi-session-end.sh` despawns that agent (`magi agent despawn`) and
+restores the previous identity.
+
+This is on by default; disable it with `MAGI_AGENT_EPHEMERAL=0`. Spawning is
+idempotent per session (a re-fired SessionStart does not create duplicates), and
+both hooks are best-effort — they never block session start or end.
+
+> Single-session-per-`$HOME` assumption: the active identity is shared per
+> `$HOME`, so the backup/restore is safe when one session is active per `$HOME`
+> at a time (the recommended multi-agent layout uses a separate `$HOME` per
+> agent). Concurrent sessions in one `$HOME` are not yet supported.
+
+If magi is not installed, the hooks exit silently.
 
 ## Safety
 

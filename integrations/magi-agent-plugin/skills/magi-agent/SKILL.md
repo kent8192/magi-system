@@ -37,7 +37,10 @@ magi send ──▶ Redis Pub/Sub ──▶ `magi watch --format json`
 - `commands/magi-system.md` — the `/magi-system` slash command wrapping the controller.
 - `hooks/magi-session-start.sh` — a SessionStart hook that reports the magi system
   state at startup (and optionally boots Redis/bridge via `MAGI_AGENT_AUTOSTART_REDIS`
-  / `MAGI_AGENT_AUTOSTART_BRIDGE`).
+  / `MAGI_AGENT_AUTOSTART_BRIDGE`). It also spawns an ephemeral, uniquely named
+  MAGI agent for the session (`magi agent spawn`) unless `MAGI_AGENT_EPHEMERAL=0`.
+- `hooks/magi-session-end.sh` — a SessionEnd hook that despawns the ephemeral
+  agent (`magi agent despawn`) and restores the prior `identity.active_agent`.
 - Sibling skill `magi-messaging` — manual magi CLI usage (send/inbox/history) in-session.
 
 The Claude Agent SDK is installed into `lib/node_modules` by `setup`; the daemon's

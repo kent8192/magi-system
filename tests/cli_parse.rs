@@ -18,7 +18,8 @@
 
 use clap::Parser;
 use magi::cli::{
-    Cli, Command, ConfigCommand, InviteCommand, RedisCommand, SshCommand, TeamCommand, WatchFormat,
+    AgentCommand, Cli, Command, ConfigCommand, InviteCommand, RedisCommand, SshCommand,
+    TeamCommand, WatchFormat,
 };
 
 #[test]
@@ -360,4 +361,60 @@ fn parses_ssh_stop() {
     else {
         panic!("expected ssh stop");
     };
+}
+
+// --- `agent` subcommand parsing ---
+
+#[test]
+fn parses_agent_spawn_with_team_and_type() {
+    let cli = Cli::try_parse_from([
+        "magi", "agent", "spawn", "--team", "core", "--type", "codex",
+    ])
+    .expect("parse");
+
+    let Some(Command::Agent {
+        command: AgentCommand::Spawn { team, agent_type },
+    }) = cli.command
+    else {
+        panic!("expected agent spawn");
+    };
+    assert_eq!(team.as_deref(), Some("core"));
+    assert_eq!(agent_type.as_deref(), Some("codex"));
+}
+
+#[test]
+fn parses_agent_spawn_defaults_to_none() {
+    let cli = Cli::try_parse_from(["magi", "agent", "spawn"]).expect("parse");
+
+    let Some(Command::Agent {
+        command: AgentCommand::Spawn { team, agent_type },
+    }) = cli.command
+    else {
+        panic!("expected agent spawn");
+    };
+    assert!(team.is_none());
+    assert!(agent_type.is_none());
+}
+
+#[test]
+fn parses_agent_despawn_with_team_and_name() {
+    let cli = Cli::try_parse_from([
+        "magi",
+        "agent",
+        "despawn",
+        "--team",
+        "core",
+        "--name",
+        "quiet-melchior",
+    ])
+    .expect("parse");
+
+    let Some(Command::Agent {
+        command: AgentCommand::Despawn { team, name },
+    }) = cli.command
+    else {
+        panic!("expected agent despawn");
+    };
+    assert_eq!(team.as_deref(), Some("core"));
+    assert_eq!(name.as_deref(), Some("quiet-melchior"));
 }

@@ -1252,6 +1252,7 @@ dependencies = [
  "base64",
  "clap",
  "futures-util",
+ "petname",
  "rand 0.9.4",
  "redis",
  "rstest",
@@ -1439,6 +1440,27 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
+
+[[package]]
+name = "petname"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ce610bff48dd7b6a127e45631795fbb0b302b99a39bef7e6da3d297e8eb2b6b"
+dependencies = [
+ "petname-macros",
+ "rand 0.10.1",
+]
+
+[[package]]
+name = "petname-macros"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "324239bd00dcf61f1a0e301d4d8f6f8c080a755248fc3fdc817ee1fdbbc27b8b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "pin-project"

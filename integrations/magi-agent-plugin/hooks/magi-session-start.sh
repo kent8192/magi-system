@@ -14,9 +14,18 @@
 #   MAGI_AGENT_AUTOSTART_REDIS=1   start managed Redis if it is down
 #   MAGI_AGENT_AUTOSTART_BRIDGE=1  start the /magi-system bridge daemon
 #
+# It additionally spawns an ephemeral, session-scoped magi agent with a unique
+# MAGI codename and records it under the daemon state dir so the SessionEnd hook
+# can remove it. This is on by default and can be disabled with
+# MAGI_AGENT_EPHEMERAL=0.
+#
 # If magi is not installed, the hook exits silently so it never disturbs a
 # session in a project that does not use magi.
 set -uo pipefail
+
+# Capture the hook's JSON payload from stdin (Claude Code supplies session_id,
+# source, cwd, ...) once, before anything else might consume stdin.
+HOOK_INPUT="$(cat 2>/dev/null || true)"
 
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -41,7 +50,19 @@ truthy() {
 # Strip characters that would break the hand-built JSON below.
 sanitize() { printf '%s' "${1:-}" | tr -d '"\\\n\r' ; }
 
+# Extract a top-level string field from the hook's JSON payload without jq.
+json_string() {
+  printf '%s' "$HOOK_INPUT" |
+    sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" |
+    head -1
+}
+
 redis_reachable() { "$MAGI" redis status >/dev/null 2>&1; }
+
+# Daemon/session state directory (also used by the bridge pid file below).
+STATE_DIR="${MAGI_AGENT_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/magi-agent}"
+SESSIONS_DIR="$STATE_DIR/sessions"
+SESSION_ID="$(json_string session_id)"
 
 # --- Optional Redis autostart -------------------------------------------------
 if ! redis_reachable && truthy "${MAGI_AGENT_AUTOSTART_REDIS:-}"; then
@@ -61,8 +82,36 @@ fi
 agent="$(sanitize "$("$MAGI" config get identity.active_agent 2>/dev/null)")"
 team="$(sanitize "$("$MAGI" config get identity.active_team 2>/dev/null)")"
 
+# --- Ephemeral session agent (opt-out with MAGI_AGENT_EPHEMERAL=0) ------------
+# When Redis is reachable and an active team is set, register a fresh uniquely
+# named MAGI agent for this session and record it so the SessionEnd hook can
+# remove it. Skipped when this session already has a record, so a re-fired
+# SessionStart never creates duplicates.
+ephemeral_on() {
+  case "$(printf '%s' "${MAGI_AGENT_EPHEMERAL:-1}" | tr '[:upper:]' '[:lower:]')" in
+    0 | false | no | off) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+session_file=""
+if [ -n "$SESSION_ID" ]; then
+  # Confine the session id to a safe file-name charset before using it as a path.
+  session_file="$SESSIONS_DIR/$(printf '%s' "$SESSION_ID" | tr -cd 'A-Za-z0-9._-').agent"
+fi
+if ephemeral_on && [ "$redis_state" = "reachable" ] && [ -n "$team" ] \
+  && [ -n "$session_file" ] && [ ! -f "$session_file" ]; then
+  prev_agent="$agent"
+  spawned="$(sanitize "$("$MAGI" agent spawn --type claude-code 2>/dev/null | tail -n1)")"
+  if [ -n "$spawned" ]; then
+    mkdir -p "$SESSIONS_DIR" 2>/dev/null || true
+    # Three positional lines: agent name, team, previous active_agent (may be
+    # empty). SessionEnd reads these back to despawn and restore the identity.
+    printf '%s\n%s\n%s\n' "$spawned" "$team" "$prev_agent" >"$session_file" 2>/dev/null || true
+    agent="$spawned"
+  fi
+fi
+
 # --- Bridge daemon state (read the daemon's pid file directly) ----------------
-STATE_DIR="${MAGI_AGENT_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/magi-agent}"
 PID_FILE="$STATE_DIR/agentd.pid"
 bridge_running() {
   [ -f "$PID_FILE" ] || return 1

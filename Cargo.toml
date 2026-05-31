@@ -9,6 +9,7 @@ anyhow = "1"
 base64 = "0.22"
 clap = { version = "4", features = ["derive", "env"] }
 futures-util = "0.3"
+petname = { version = "3.0.0", default-features = false, features = ["default-words"] }
 rand = "0.9"
 redis = { version = "1", features = ["tokio-comp", "streams"] }
 serde = { version = "1", features = ["derive"] }

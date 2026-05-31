@@ -21,6 +21,8 @@ Common actions:
 ~/.agents/skills/__SKILL_NAME__/bin/magi send <agent> <message>
 ~/.agents/skills/__SKILL_NAME__/bin/magi history
 ~/.agents/skills/__SKILL_NAME__/bin/magi team members
+~/.agents/skills/__SKILL_NAME__/bin/magi agent spawn
+~/.agents/skills/__SKILL_NAME__/bin/magi agent despawn
 ~/.agents/skills/__SKILL_NAME__/bin/magi watch --format line
 ~/.agents/skills/__SKILL_NAME__/bin/magi config get identity.active_team
 ```

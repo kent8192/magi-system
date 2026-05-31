@@ -1,18 +1,17 @@
 ---
-name: magi-messaging
+name: magi
 description: >-
-  Send and read cross-agent messages over the magi CLI from within a Claude
-  Code session. Use when the user wants to message another agent, check their
-  magi inbox, view message history, manage teams/invites, or watch for incoming
-  magi messages. Triggers on: magi send, magi inbox, magi history, message
-  another agent, check messages, magi team, magi にメッセージ, 受信確認.
+  Send and read cross-agent messages over the magi CLI from Codex. Use when the
+  user wants to message another agent, check their magi inbox, view message
+  history, manage teams/invites, or watch for incoming magi messages. Triggers
+  on: magi send, magi inbox, magi history, message another agent, check
+  messages, magi team, magi にメッセージ, 受信確認.
 ---
 
-# magi-messaging
+# magi
 
 Manual, in-session use of the [`magi`](https://github.com/kent8192/magi) CLI for
-cross-agent messaging. (For an autonomous responder that replies to messages on
-its own, see the sibling `magi-agent` skill and the `/magi-system` command.)
+cross-agent messaging from Codex.
 
 **Always operate through the `magi` CLI. Never read or edit `~/.magi`, the Redis
 data, or installed skill files directly.**
@@ -59,20 +58,11 @@ magi join --invite <token>
 magi config set identity.active_team <team>   # join does not set the active team
 ```
 
-## Ephemeral session agents
+## Notes for Codex
 
-```bash
-magi agent spawn [--team <t>]           # register a unique <adjective>-<magi> agent, adopt it
-magi agent despawn [--team <t>] [--name <n>]  # remove it again (defaults to the active agent)
-```
-
-`spawn` assigns a deterministic cycling MAGI codename (`melchior` → `balthasar`
-→ `caspar`) and sets it as `identity.active_agent`. The Claude Code session
-hooks call these automatically (spawn on start, despawn on end); run them by
-hand only for manual lifecycle control.
-
-## When to hand off to the bridge
-
-If the user wants messages handled automatically (a bot that replies the moment a
-message arrives), don't poll `inbox` in a loop — use the `magi-agent` bridge:
-`/magi-system start`. See the `magi-agent` skill.
+- The autonomous auto-reply bridge (the `/magi-system` command and `magi-agent`
+  skill) is a **Claude Code** feature, built on the Claude Agent SDK; there is
+  no Codex equivalent. From Codex, drive magi manually with the commands above.
+- The ephemeral session-agent lifecycle (`magi agent spawn` / `magi agent
+  despawn`) is wired to Claude Code session hooks. The commands themselves are
+  available from any environment, but Codex does not auto-spawn or auto-despawn.

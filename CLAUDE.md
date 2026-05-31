@@ -218,6 +218,8 @@ magi redis start
 magi team create <team>
 magi invite create --team <team> [--ttl 24h]
 magi join --invite <token>
+magi agent spawn [--team <team>] [--type <type>]
+magi agent despawn [--team <team>] [--name <agent>]
 magi send <agent> <message>
 magi inbox
 magi history [--team <team>] [--agent <agent>]
