@@ -1,0 +1,19 @@
+{
+  "name": "magi-dev",
+  "description": "Development marketplace for the magi cross-agent messaging plugins (Claude Code and Codex).",
+  "owner": {
+    "name": "kent8192"
+  },
+  "plugins": [
+    {
+      "name": "magi",
+      "source": "./",
+      "description": "Redis-backed cross-agent messaging skill for CLI AI agents (Codex)."
+    },
+    {
+      "name": "magi-agent",
+      "source": "./integrations/magi-agent-plugin",
+      "description": "Event-driven bridge: incoming magi messages become new input for a persistent Claude session, which auto-replies via the magi CLI."
+    }
+  ]
+}
