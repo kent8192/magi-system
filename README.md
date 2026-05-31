@@ -57,7 +57,9 @@ the marketplace:
 claude plugin marketplace remove magi
 claude plugin marketplace add /absolute/path/to/magi
 claude plugin marketplace update magi
-claude plugin update magi-agent@magi || claude plugin install magi-agent@magi
+claude plugin list --json  # installer uses this to choose update vs install
+claude plugin update magi-agent@magi  # when already installed
+claude plugin install magi-agent@magi # when not yet installed
 
 # Codex
 codex plugin marketplace remove magi
