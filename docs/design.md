@@ -88,7 +88,9 @@ lifecycle from session hooks. SessionStart spawns an agent (recording
 `<name, team, prev-agent>` keyed by the runtime session id under the runtime
 state dir) and SessionEnd despawns it and restores the previously active
 identity. Claude Code uses `MAGI_AGENT_EPHEMERAL=0` to opt out; Codex uses
-`MAGI_CODEX_EPHEMERAL=0`.
+`MAGI_CODEX_EPHEMERAL=0`. The Codex plugin also injects a compact
+UserPromptSubmit context block before each prompt with the resolved session id,
+active magi agent, active team, Redis state, and session record status.
 
 ## Plugin Parity (Codex vs Claude Code)
 
@@ -102,7 +104,7 @@ are deliberate and **not** bugs to be "fixed":
 - **The auto-reply bridge** (`/magi-system`, the `magi-agent` skill) is a
   **Claude Code only** feature because it is built on the Claude Agent SDK.
   Codex has no equivalent bridge, but it does have native plugin hooks for the
-  ephemeral session-agent lifecycle.
+  ephemeral session-agent lifecycle and per-prompt magi-system context.
 
 ## SSH
 

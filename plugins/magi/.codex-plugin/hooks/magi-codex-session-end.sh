@@ -26,6 +26,9 @@ json_string() {
 STATE_DIR="${MAGI_CODEX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/magi-codex}"
 SESSIONS_DIR="$STATE_DIR/sessions"
 SESSION_ID="$(json_string session_id)"
+if [ -z "$SESSION_ID" ]; then
+  SESSION_ID="${CODEX_THREAD_ID:-${CODEX_SESSION_ID:-}}"
+fi
 
 [ -n "$SESSION_ID" ] || exit 0
 session_file="$SESSIONS_DIR/$(printf '%s' "$SESSION_ID" | tr -cd 'A-Za-z0-9._-').agent"

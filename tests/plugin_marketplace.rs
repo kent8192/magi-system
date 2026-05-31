@@ -71,13 +71,18 @@ fn codex_plugin_declares_session_agent_hooks() {
     )
     .expect("root Codex hooks config should be valid JSON");
     assert!(hooks["hooks"]["SessionStart"].is_array());
+    assert!(hooks["hooks"]["UserPromptSubmit"].is_array());
     assert!(hooks["hooks"]["SessionEnd"].is_array());
     assert_eq!(
         std::fs::read_to_string(root_hooks).expect("read root Codex hooks config"),
         std::fs::read_to_string(marketplace_hooks).expect("read marketplace Codex hooks config")
     );
 
-    for hook in ["magi-codex-session-start.sh", "magi-codex-session-end.sh"] {
+    for hook in [
+        "magi-codex-session-start.sh",
+        "magi-codex-prompt-context.sh",
+        "magi-codex-session-end.sh",
+    ] {
         let root_hook = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join(".codex-plugin/hooks")
             .join(hook);

@@ -32,7 +32,8 @@ The repository ships two plugins under the `magi` marketplace:
 - **`magi` (Codex)** — manifest at `.codex-plugin/plugin.json`, mirrored into
   `plugins/magi/.codex-plugin/` for marketplace installation, exposing the
   `magi` messaging skill plus Codex session hooks that spawn a session-scoped
-  `codex` agent and clean it up on session end.
+  `codex` agent, inject magi-system context on each prompt, and clean the
+  agent up on session end.
 - **`magi-agent` (Claude Code)** — the event-driven bridge under
   `integrations/magi-agent-plugin/` that turns incoming magi messages into a
   live Claude session.

@@ -76,6 +76,42 @@ teardown() {
   [ "$(grep -c '^spawn ' "$CALLS")" -eq 1 ]
 }
 
+@test "Codex SessionStart falls back to CODEX_THREAD_ID when payload has no session_id" {
+  CODEX_THREAD_ID=thread-1 run bash "$HOOKS/magi-codex-session-start.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"SessionStart"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"agent: quiet-melchior"* ]]
+
+  local file="$MAGI_CODEX_STATE_DIR/sessions/thread-1.agent"
+  [ -f "$file" ]
+  [ "$(sed -n '1p' "$file")" = "quiet-melchior" ]
+  [ "$(cat "$ACTIVE_AGENT_FILE")" = "quiet-melchior" ]
+}
+
+@test "Codex SessionEnd falls back to CODEX_THREAD_ID when payload has no session_id" {
+  CODEX_THREAD_ID=thread-2 bash "$HOOKS/magi-codex-session-start.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"SessionStart"}'
+  CODEX_THREAD_ID=thread-2 run bash "$HOOKS/magi-codex-session-end.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"SessionEnd"}'
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$MAGI_CODEX_STATE_DIR/sessions/thread-2.agent" ]
+  grep -q "despawn agent despawn --team testteam --name quiet-melchior" "$CALLS"
+  [ "$(cat "$ACTIVE_AGENT_FILE")" = "kent8192" ]
+}
+
+@test "Codex UserPromptSubmit injects current magi context" {
+  mkdir -p "$MAGI_CODEX_STATE_DIR/sessions"
+  printf 'quiet-melchior\ntestteam\nkent8192\n' >"$MAGI_CODEX_STATE_DIR/sessions/thread-3.agent"
+
+  CODEX_THREAD_ID=thread-3 run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"hookEventName":"UserPromptSubmit"'* ]]
+  [[ "$output" == *"magi-system context"* ]]
+  [[ "$output" == *"session_id: thread-3"* ]]
+  [[ "$output" == *"agent: kent8192"* ]]
+  [[ "$output" == *"team: testteam"* ]]
+  [[ "$output" == *"redis: reachable"* ]]
+  [[ "$output" == *"session_record: quiet-melchior"* ]]
+}
+
 @test "MAGI_CODEX_EPHEMERAL=0 disables Codex auto-spawning" {
   MAGI_CODEX_EPHEMERAL=0 run bash "$HOOKS/magi-codex-session-start.sh" <<<'{"session_id":"codex-4","cwd":"/tmp/project","hook_event_name":"SessionStart"}'
   [ "$status" -eq 0 ]
