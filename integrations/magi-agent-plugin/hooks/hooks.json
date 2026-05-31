@@ -9,6 +9,16 @@
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/magi-session-end.sh\""
+          }
+        ]
+      }
     ]
   }
 }
