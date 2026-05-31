@@ -25,6 +25,27 @@ pub fn resolve_identity(config: &AppConfig) -> ActiveIdentity {
     resolve_identity_with_env(config, |key| env::var(key).ok())
 }
 
+/// Build the error message used when a command needs a session-scoped agent.
+pub fn missing_session_agent_message() -> String {
+    missing_session_agent_message_with_env(|key| env::var(key).ok())
+}
+
+/// Build the missing-agent message using an injected environment reader.
+///
+/// This keeps tests isolated from the real Codex configuration while still
+/// allowing the CLI to diagnose the common case where Codex hook execution is
+/// disabled and therefore no SessionStart record can be created.
+pub fn missing_session_agent_message_with_env<F>(mut env: F) -> String
+where
+    F: FnMut(&str) -> Option<String>,
+{
+    let base = "session agent is required";
+    match codex_hooks_disabled_warning(&mut env) {
+        Some(warning) => format!("{base}; warning: {warning}"),
+        None => base.to_string(),
+    }
+}
+
 /// Resolve identity using an injected environment reader.
 ///
 /// This is exposed for tests so they can assert session-record precedence
@@ -111,6 +132,50 @@ where
     }
 
     dedup_paths(dirs)
+}
+
+fn codex_hooks_disabled_warning<F>(env: &mut F) -> Option<String>
+where
+    F: FnMut(&str) -> Option<String>,
+{
+    first_non_empty_env(env, &["CODEX_THREAD_ID", "CODEX_SESSION_ID"])?;
+
+    let config_path = codex_config_path(env)?;
+    let content = fs::read_to_string(config_path).ok()?;
+    let config: toml::Value = toml::from_str(&content).ok()?;
+    let features = config.get("features")?;
+
+    let mut disabled = Vec::new();
+    if feature_is_false(features, "hooks") {
+        disabled.push("features.hooks=false");
+    }
+    if feature_is_false(features, "plugin_hooks") {
+        disabled.push("features.plugin_hooks=false");
+    }
+
+    (!disabled.is_empty()).then(|| {
+        format!(
+            "Codex hooks are disabled ({}); enable hooks and plugin_hooks, then restart Codex so SessionStart can assign a magi agent",
+            disabled.join(", ")
+        )
+    })
+}
+
+fn codex_config_path<F>(env: &mut F) -> Option<PathBuf>
+where
+    F: FnMut(&str) -> Option<String>,
+{
+    if let Some(codex_home) = non_empty_env(env, "CODEX_HOME") {
+        return Some(PathBuf::from(codex_home).join("config.toml"));
+    }
+    non_empty_env(env, "HOME").map(|home| PathBuf::from(home).join(".codex").join("config.toml"))
+}
+
+fn feature_is_false(features: &toml::Value, key: &str) -> bool {
+    features
+        .get(key)
+        .and_then(toml::Value::as_bool)
+        .is_some_and(|enabled| !enabled)
 }
 
 fn non_empty_env<F>(env: &mut F, key: &str) -> Option<String>

@@ -19,7 +19,7 @@ use crate::config::AppConfig;
 use crate::error::{MagiError, Result};
 use crate::model::RedisKeys;
 use crate::redis_client;
-use crate::session_identity::resolve_identity;
+use crate::session_identity::{missing_session_agent_message, resolve_identity};
 use crate::team;
 
 /// Number of `<adjective>-<suffix>` candidates tried before the guaranteed
@@ -85,7 +85,7 @@ pub fn name() -> Result<()> {
     let identity = resolve_identity(&config);
     let agent = identity
         .agent
-        .ok_or_else(|| MagiError::InvalidConfig("session agent is required".to_string()))?;
+        .ok_or_else(|| MagiError::InvalidConfig(missing_session_agent_message()))?;
     println!("{agent}");
     Ok(())
 }
@@ -271,7 +271,7 @@ pub async fn despawn(team: Option<String>, name: Option<String>) -> Result<()> {
         .ok_or_else(|| MagiError::InvalidConfig("identity.active_team is required".to_string()))?;
     let name = name
         .or(identity.agent)
-        .ok_or_else(|| MagiError::InvalidConfig("agent name is required".to_string()))?;
+        .ok_or_else(|| MagiError::InvalidConfig(missing_session_agent_message()))?;
 
     match despawn_with_url(&url, &team, &name).await {
         Ok(()) => println!("Despawned {name} from team: {team}"),

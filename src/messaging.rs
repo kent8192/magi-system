@@ -37,7 +37,7 @@ use crate::config::AppConfig;
 use crate::error::{MagiError, Result};
 use crate::model::{MessageEvent, RedisKeys};
 use crate::redis_client;
-use crate::session_identity::{resolve_identity, ActiveIdentity};
+use crate::session_identity::{missing_session_agent_message, resolve_identity, ActiveIdentity};
 use crate::team;
 
 /// Controls whether reading the inbox advances the per-agent read cursor.
@@ -466,5 +466,5 @@ fn session_agent(identity: &ActiveIdentity) -> Result<String> {
     identity
         .agent
         .clone()
-        .ok_or_else(|| MagiError::InvalidConfig("session agent is required".to_string()))
+        .ok_or_else(|| MagiError::InvalidConfig(missing_session_agent_message()))
 }

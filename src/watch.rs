@@ -25,7 +25,7 @@ use crate::config::AppConfig;
 use crate::error::{MagiError, Result};
 use crate::messaging::{self, InboxReadMode, MessageRecord};
 use crate::model::RedisKeys;
-use crate::session_identity::resolve_identity;
+use crate::session_identity::{missing_session_agent_message, resolve_identity};
 
 /// Entry point for the `magi watch` command.
 ///
@@ -51,7 +51,7 @@ pub async fn run(format: WatchFormat) -> Result<()> {
         .ok_or_else(|| MagiError::InvalidConfig("identity.active_team is required".to_string()))?;
     let agent = identity
         .agent
-        .ok_or_else(|| MagiError::InvalidConfig("session agent is required".to_string()))?;
+        .ok_or_else(|| MagiError::InvalidConfig(missing_session_agent_message()))?;
 
     watch_loop_with_url(&url, &team, &agent, format).await
 }
