@@ -67,13 +67,18 @@ install_claude_plugin() {
     echo "skip: claude CLI not found; not installing the magi-agent Claude Code plugin"
     return 0
   fi
-  echo "installing the magi-agent plugin into Claude Code..."
+  echo "installing or updating the magi-agent plugin in Claude Code..."
   # Adding a marketplace that already exists is treated as success.
   claude plugin marketplace add "$MAGI_PLUGIN_REPO" || true
-  if claude plugin install "magi-agent@$MAGI_PLUGIN_MARKETPLACE" --scope user; then
+  # Refresh the marketplace before updating so existing plugin installs can pick
+  # up the repository's current published version.
+  claude plugin marketplace update "$MAGI_PLUGIN_MARKETPLACE" >/dev/null 2>&1 || true
+  if claude plugin update "magi-agent" --scope user; then
+    echo "  updated magi-agent (restart Claude Code to load it)"
+  elif claude plugin install "magi-agent@$MAGI_PLUGIN_MARKETPLACE" --scope user; then
     echo "  installed magi-agent@$MAGI_PLUGIN_MARKETPLACE (restart Claude Code to load it)"
   else
-    echo "warning: failed to install magi-agent@$MAGI_PLUGIN_MARKETPLACE into Claude Code" >&2
+    echo "warning: failed to install or update magi-agent@$MAGI_PLUGIN_MARKETPLACE in Claude Code" >&2
   fi
 }
 
@@ -82,12 +87,17 @@ install_codex_plugin() {
     echo "skip: codex CLI not found; not installing the magi Codex plugin"
     return 0
   fi
-  echo "installing the magi plugin into Codex..."
+  echo "installing or updating the magi plugin in Codex..."
   codex plugin marketplace add "$MAGI_PLUGIN_REPO" || true
-  if codex plugin add "magi@$MAGI_PLUGIN_MARKETPLACE"; then
+  codex plugin marketplace update "$MAGI_PLUGIN_MARKETPLACE" >/dev/null 2>&1 || true
+  if codex plugin update "magi@$MAGI_PLUGIN_MARKETPLACE"; then
+    echo "  updated magi@$MAGI_PLUGIN_MARKETPLACE"
+  elif codex plugin update "magi"; then
+    echo "  updated magi"
+  elif codex plugin add "magi@$MAGI_PLUGIN_MARKETPLACE"; then
     echo "  installed magi@$MAGI_PLUGIN_MARKETPLACE"
   else
-    echo "warning: failed to add magi@$MAGI_PLUGIN_MARKETPLACE into Codex" >&2
+    echo "warning: failed to add or update magi@$MAGI_PLUGIN_MARKETPLACE in Codex" >&2
   fi
 }
 
