@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::fs;
 
 use magi::config::AppConfig;
-use magi::session_identity::resolve_identity_with_env;
+use magi::session_identity::{missing_session_agent_message_with_env, resolve_identity_with_env};
 
 #[test]
 fn codex_session_record_supplies_session_identity() {
@@ -58,4 +58,29 @@ fn missing_session_record_has_no_agent_fallback() {
 
     assert_eq!(identity.agent, None);
     assert_eq!(identity.team.as_deref(), Some("global-team"));
+}
+
+#[test]
+fn missing_session_agent_message_warns_when_codex_hooks_are_disabled() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let codex_dir = temp.path().join(".codex");
+    fs::create_dir_all(&codex_dir).expect("codex dir");
+    fs::write(
+        codex_dir.join("config.toml"),
+        "[features]\nhooks = false\nplugin_hooks = false\n",
+    )
+    .expect("codex config");
+
+    let mut env = HashMap::new();
+    env.insert("CODEX_THREAD_ID", "thread-missing");
+    env.insert("HOME", temp.path().to_str().expect("utf-8 path"));
+
+    let message = missing_session_agent_message_with_env(|key| {
+        env.get(key).map(|value| (*value).to_string())
+    });
+
+    assert!(message.contains("session agent is required"));
+    assert!(message.contains("Codex hooks are disabled"));
+    assert!(message.contains("features.hooks=false"));
+    assert!(message.contains("features.plugin_hooks=false"));
 }
