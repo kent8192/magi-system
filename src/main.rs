@@ -9,7 +9,7 @@
 //!
 //! ```text
 //! magi                         → repl::run()          (interactive REPL)
-//! magi redis {start|status|stop}   → redis_manager::*
+//! magi redis {start|status|stop|reset}   → redis_manager::*
 //! magi team  {create|list|members} → team::*
 //! magi invite {create|list|revoke} → invite::*
 //! magi join --invite <TOKEN>   → invite::join()
@@ -46,6 +46,8 @@ async fn main() -> Result<()> {
             RedisCommand::Status => magi::redis_manager::status().await,
             // Gracefully stop the managed Redis server.
             RedisCommand::Stop => magi::redis_manager::stop().await,
+            // Clear managed Redis persistence and restart the server.
+            RedisCommand::Reset => magi::redis_manager::reset().await,
         },
 
         // --- Team management ---

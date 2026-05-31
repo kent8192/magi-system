@@ -39,8 +39,9 @@ use magi::error::{MagiError, Result};
 use magi::redis_manager::{
     build_docker_start_plan, build_redis_server_start_plan, build_redis_url, docker_stop_plan,
     extract_password_from_redis_url, password_for_start, redact_command_for_diagnostics,
-    redis_server_pid_file, redis_server_stop_plan, start_with_runtime, status_with_runtime,
-    stop_with_runtime, write_private_redis_config_file, CommandPlan, RedisRuntime,
+    redis_server_pid_file, redis_server_stop_plan, reset_with_runtime, start_with_runtime,
+    status_with_runtime, stop_with_runtime, write_private_redis_config_file, CommandPlan,
+    RedisRuntime,
 };
 
 /// In-memory stand-in for the real [`RedisRuntime`] used during tests.
@@ -738,4 +739,36 @@ async fn stop_external_mode_is_noop() {
         .expect("stop external");
 
     assert!(runtime.commands.is_empty());
+}
+
+#[tokio::test]
+async fn reset_clears_managed_data_and_restarts_redis() {
+    let (_temp, paths) = temp_paths();
+    let mut config = AppConfig::default();
+    config.redis.mode = RedisMode::Docker;
+    config.redis.url = Some("redis://:reused@127.0.0.1:6379".to_string());
+    std::fs::create_dir_all(&paths.redis_data_dir).expect("redis data dir");
+    std::fs::write(paths.redis_data_dir.join("appendonly.aof"), b"old data").expect("redis data");
+    let mut runtime = FakeRuntime::default();
+
+    let saved = reset_with_runtime(&paths, config, &mut runtime)
+        .await
+        .expect("reset");
+
+    assert!(
+        !paths.redis_data_dir.join("appendonly.aof").exists(),
+        "reset should clear persisted Redis data"
+    );
+    assert!(
+        paths.redis_data_dir.is_dir(),
+        "reset should recreate the Redis data directory"
+    );
+    assert_eq!(runtime.commands, vec![docker_stop_plan()]);
+    assert_eq!(runtime.docker_starts.len(), 1);
+    assert!(runtime.redis_server_starts.is_empty());
+    assert_eq!(saved.redis.mode, RedisMode::Docker);
+    assert_eq!(
+        saved.redis.url.as_deref(),
+        Some("redis://:reused@127.0.0.1:6379")
+    );
 }

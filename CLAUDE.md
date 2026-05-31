@@ -51,7 +51,7 @@ and the binary is installed at `~/.agents/skills/magi/bin/magi` and
 - Use `magi team create`, `magi invite create`, `magi join`, `magi send`,
   `magi inbox`, `magi history`, and `magi team members` for team and message
   operations.
-- Use `magi redis start|status|stop` and `magi ssh start|status|stop` for the
+- Use `magi redis start|status|stop|reset` and `magi ssh start|status|stop` for the
   managed Redis and SSH tunnel lifecycle.
 - Use `magi config get|set` for configuration. Do not hand-edit
   `~/.magi/config.toml`, Redis data, or generated installed skill files unless
@@ -215,6 +215,7 @@ bash -n scripts/*.sh install.sh setup.sh uninstall.sh
 **Manual CLI operations:**
 ```bash
 magi redis start
+magi redis reset
 magi team create <team>
 magi invite create --team <team> [--ttl 24h]
 magi join --invite <token>

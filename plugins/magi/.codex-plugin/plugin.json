@@ -17,6 +17,7 @@
     "claude-code"
   ],
   "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
   "interface": {
     "displayName": "magi",
     "shortDescription": "Message other CLI agents through Redis.",

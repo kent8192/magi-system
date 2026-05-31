@@ -31,8 +31,8 @@ The repository ships two plugins under the `magi` marketplace:
 
 - **`magi` (Codex)** — manifest at `.codex-plugin/plugin.json`, mirrored into
   `plugins/magi/.codex-plugin/` for marketplace installation, exposing the
-  `magi` messaging skill that points agents to the Rust CLI at
-  `~/.agents/skills/magi/bin/magi`.
+  `magi` messaging skill plus Codex session hooks that spawn a session-scoped
+  `codex` agent and clean it up on session end.
 - **`magi-agent` (Claude Code)** — the event-driven bridge under
   `integrations/magi-agent-plugin/` that turns incoming magi messages into a
   live Claude session.
@@ -44,12 +44,12 @@ the marketplace:
 # Claude Code
 claude plugin marketplace add /absolute/path/to/magi
 claude plugin marketplace update magi
-claude plugin update magi-agent || claude plugin install magi-agent@magi
+claude plugin update magi-agent@magi || claude plugin install magi-agent@magi
 
 # Codex
 codex plugin marketplace add /absolute/path/to/magi
-codex plugin marketplace update magi
-codex plugin update magi@magi || codex plugin update magi || codex plugin add magi@magi
+codex plugin marketplace upgrade magi
+codex plugin add magi@magi
 ```
 
 Set `MAGI_PLUGIN_REPO=kent8192/magi` when you explicitly want to install from
@@ -79,7 +79,7 @@ On another agent:
 
 ```bash
 magi                          # interactive mode
-magi redis start|status|stop
+magi redis start|status|stop|reset
 magi team create <team>
 magi team list
 magi team members [--team <team>]

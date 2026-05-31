@@ -17,8 +17,8 @@
   points at `plugins/magi`. `install.sh` and `uninstall.sh` register and remove
   these through the `claude plugin` and `codex plugin` CLIs on a best-effort
   basis (skipped when the CLI is absent). Re-running `install.sh` refreshes the
-  marketplace and updates existing plugin installs before falling back to a
-  first-time install.
+  marketplace and re-adds the Codex plugin from the current marketplace
+  snapshot.
 - Redis lifecycle: Docker first, `redis-server` fallback
 - Durable messaging: Redis Streams
 - Wakeups: Redis Pub/Sub
@@ -83,25 +83,26 @@ Uniqueness is enforced by claiming each candidate with an atomic `SADD` to
 `magi:team:<team>:agents`; on collision the next adjective is tried, and a final
 `<adjective>-<magi>-<seq>` fallback cannot collide because `<seq>` is unique.
 
-The Claude Code `magi-agent` plugin drives this lifecycle from session hooks: the
-SessionStart hook spawns an agent (recording `<name, team, prev-agent>` keyed by
-the Claude session id under the daemon state dir) and the SessionEnd hook
-despawns it and restores the previously active identity. Spawning is idempotent
-per session id and opt-out via `MAGI_AGENT_EPHEMERAL=0`.
+The Claude Code `magi-agent` plugin and the Codex `magi` plugin both drive this
+lifecycle from session hooks. SessionStart spawns an agent (recording
+`<name, team, prev-agent>` keyed by the runtime session id under the runtime
+state dir) and SessionEnd despawns it and restores the previously active
+identity. Claude Code uses `MAGI_AGENT_EPHEMERAL=0` to opt out; Codex uses
+`MAGI_CODEX_EPHEMERAL=0`.
 
 ## Plugin Parity (Codex vs Claude Code)
 
 The messaging command surface is intentionally mirrored across the Codex `magi`
 skill (`.codex-plugin/skills/magi/SKILL.md`) and the Claude Code `magi-messaging`
-skill, both referencing the `magi` binary on `PATH`. Two differences are
-deliberate and **not** bugs to be "fixed":
+skill, both referencing the `magi` binary on `PATH`. Runtime-specific differences
+are deliberate and **not** bugs to be "fixed":
 
 - **Skill frontmatter** differs because the runtimes require different schemas: a
   Codex skill needs a `name:` field; a Claude Code slash command does not.
-- **The auto-reply bridge** (`/magi-system`, the `magi-agent` skill) and the
-  ephemeral session lifecycle are **Claude Code only**, because they are built on
-  the Claude Agent SDK and Claude Code session hooks. Codex has no equivalent, so
-  it exposes the `magi` CLI manually instead.
+- **The auto-reply bridge** (`/magi-system`, the `magi-agent` skill) is a
+  **Claude Code only** feature because it is built on the Claude Agent SDK.
+  Codex has no equivalent bridge, but it does have native plugin hooks for the
+  ephemeral session-agent lifecycle.
 
 ## SSH
 

@@ -172,6 +172,8 @@ pub enum RedisCommand {
     Status,
     /// Stop the managed Redis server gracefully.
     Stop,
+    /// Stop managed Redis, clear its persisted data, and start it again.
+    Reset,
 }
 
 /// Subcommands for managing the SSH helper process.
