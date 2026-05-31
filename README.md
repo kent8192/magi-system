@@ -1,6 +1,16 @@
-# magi
+<div align="center">
+  <img src="branding/icon.png" alt="MAGI SYSTEM icon" width="200"/>
 
-Redis-backed cross-agent messaging for CLI AI agents.
+  <h1>MAGI SYSTEM</h1>
+
+  <h3>Redis-backed cross-agent messaging for CLI AI agents</h3>
+
+  <p><strong>Durable team messaging for Codex, Claude Code, and other CLI agents</strong></p>
+  <p>Coordinate agents through Redis Streams,<br/>
+  Pub/Sub wakeups, team invites, and session-scoped inboxes.</p>
+</div>
+
+---
 
 magi is a Rust CLI that stores team membership, invites, message history, and
 per-agent inbox cursors in Redis. Redis Streams are the durable message log and
@@ -122,3 +132,9 @@ passwords are not passed on the command line.
 
 The old Bash/SQLite scripts are retired. They now exit with a clear retirement
 notice and point callers to the Rust CLI.
+
+## Acknowledgments
+
+MAGI SYSTEM builds on [agmsg](https://github.com/fujibee/agmsg), the original
+Bash + SQLite cross-agent messaging tool. Thanks to its authors for the design
+this project is based on.
