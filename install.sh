@@ -82,7 +82,9 @@ install_claude_plugin() {
     return 0
   fi
   echo "installing or updating the magi-agent plugin in Claude Code..."
-  # Adding a marketplace that already exists is treated as success.
+  # Replace the marketplace root first so an existing `magi` marketplace cannot
+  # keep pointing at an older checkout while this installer reports success.
+  claude plugin marketplace remove "$MAGI_PLUGIN_MARKETPLACE" >/dev/null 2>&1 || true
   claude plugin marketplace add "$MAGI_PLUGIN_REPO" || true
   # Refresh the marketplace before updating so existing plugin installs can pick
   # up the repository's current published version.

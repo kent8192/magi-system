@@ -121,6 +121,10 @@ fn installer_updates_claude_plugin_by_marketplace_selector() {
     let installer = std::fs::read_to_string(installer).expect("read installer");
 
     assert!(
+        installer.contains("claude plugin marketplace remove \"$MAGI_PLUGIN_MARKETPLACE\""),
+        "Claude marketplace roots should be replaced before installing so local checkout changes refresh"
+    );
+    assert!(
         installer.contains(r#"claude plugin update "magi-agent@$MAGI_PLUGIN_MARKETPLACE""#),
         "Claude updates should use the installed plugin selector including its marketplace"
     );

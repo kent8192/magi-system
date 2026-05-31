@@ -44,11 +44,13 @@ the marketplace:
 
 ```bash
 # Claude Code
+claude plugin marketplace remove magi
 claude plugin marketplace add /absolute/path/to/magi
 claude plugin marketplace update magi
 claude plugin update magi-agent@magi || claude plugin install magi-agent@magi
 
 # Codex
+codex plugin marketplace remove magi
 codex plugin marketplace add /absolute/path/to/magi
 codex plugin marketplace upgrade magi
 codex plugin add magi@magi
