@@ -37,6 +37,7 @@ use crate::config::AppConfig;
 use crate::error::{MagiError, Result};
 use crate::model::{MessageEvent, RedisKeys};
 use crate::redis_client;
+use crate::session_identity::{resolve_identity, ActiveIdentity};
 use crate::team;
 
 /// Controls whether reading the inbox advances the per-agent read cursor.
@@ -83,9 +84,10 @@ pub struct MessageRecord {
 pub async fn send(to: String, message: Vec<String>) -> Result<()> {
     let config = AppConfig::load()?;
     let url = configured_redis_url(&config)?;
-    let team = active_team(&config)?;
+    let identity = resolve_identity(&config);
+    let team = active_team(&identity)?;
     // The active agent is always the sender for the interactive `send` command.
-    let from = active_agent(&config)?;
+    let from = active_agent(&identity)?;
     // Join the variadic CLI words back into a single message body.
     let body = message.join(" ");
 
@@ -110,8 +112,9 @@ pub async fn send(to: String, message: Vec<String>) -> Result<()> {
 pub async fn inbox() -> Result<()> {
     let config = AppConfig::load()?;
     let url = configured_redis_url(&config)?;
-    let team = active_team(&config)?;
-    let agent = active_agent(&config)?;
+    let identity = resolve_identity(&config);
+    let team = active_team(&identity)?;
+    let agent = active_agent(&identity)?;
 
     // MarkRead advances this agent's cursor, so consumed messages are not
     // shown again on the next `inbox` invocation.
@@ -137,9 +140,10 @@ pub async fn inbox() -> Result<()> {
 pub async fn history(team: Option<String>, agent: Option<String>) -> Result<()> {
     let config = AppConfig::load()?;
     let url = configured_redis_url(&config)?;
+    let identity = resolve_identity(&config);
     // Prefer the explicit team argument, falling back to the active team.
     let team = team
-        .or(config.identity.active_team)
+        .or(identity.team)
         .ok_or_else(|| MagiError::InvalidConfig("identity.active_team is required".to_string()))?;
 
     for message in history_with_url(&url, &team, agent.as_deref()).await? {
@@ -446,10 +450,9 @@ fn configured_redis_url(config: &AppConfig) -> Result<String> {
 /// # Errors
 ///
 /// Returns `MagiError::InvalidConfig` when no active team is configured.
-fn active_team(config: &AppConfig) -> Result<String> {
-    config
-        .identity
-        .active_team
+fn active_team(identity: &ActiveIdentity) -> Result<String> {
+    identity
+        .team
         .clone()
         .ok_or_else(|| MagiError::InvalidConfig("identity.active_team is required".to_string()))
 }
@@ -459,10 +462,9 @@ fn active_team(config: &AppConfig) -> Result<String> {
 /// # Errors
 ///
 /// Returns `MagiError::InvalidConfig` when no active agent is configured.
-fn active_agent(config: &AppConfig) -> Result<String> {
-    config
-        .identity
-        .active_agent
+fn active_agent(identity: &ActiveIdentity) -> Result<String> {
+    identity
+        .agent
         .clone()
         .ok_or_else(|| MagiError::InvalidConfig("identity.active_agent is required".to_string()))
 }

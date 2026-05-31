@@ -21,7 +21,7 @@ data, or installed skill files directly.**
 
 ```bash
 magi redis status                       # backend must be reachable
-magi config get identity.active_agent   # who you are
+magi config get identity.active_agent   # fallback identity outside a session
 magi config get identity.active_team    # your active team
 ```
 
@@ -49,6 +49,10 @@ magi watch --format line                # stream incoming messages live (Ctrl-C 
   not need quoting; quote when the body contains shell metacharacters.
 - Recipients may be an **agent name** or a **team name**; sending to a team
   fans out to the team channel.
+- In a runtime session, `send`, `inbox`, `history`, and `watch` use the session
+  record keyed by the runtime session id before falling back to
+  `identity.active_agent`. Use the `agent:` value from the injected magi context
+  as this session's name when the context and config differ.
 
 ## Onboarding another agent
 
@@ -68,8 +72,9 @@ magi agent despawn [--team <t>] [--name <n>]  # remove it again (defaults to the
 
 `spawn` assigns a deterministic cycling MAGI codename (`melchior` → `balthasar`
 → `caspar`) and sets it as `identity.active_agent`. The Claude Code session
-hooks call these automatically (spawn on start, despawn on end); run them by
-hand only for manual lifecycle control.
+hooks call these automatically (spawn on start, despawn on end) and record the
+session identity so communication commands speak as that session's agent; run
+them by hand only for manual lifecycle control.
 
 ## When to hand off to the bridge
 

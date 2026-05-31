@@ -25,6 +25,7 @@ use crate::config::AppConfig;
 use crate::error::{MagiError, Result};
 use crate::messaging::{self, InboxReadMode, MessageRecord};
 use crate::model::RedisKeys;
+use crate::session_identity::resolve_identity;
 
 /// Entry point for the `magi watch` command.
 ///
@@ -34,9 +35,9 @@ use crate::model::RedisKeys;
 ///
 /// # Errors
 ///
-/// Returns `MagiError::InvalidConfig` if `redis.url`, `identity.active_team`,
-/// or `identity.active_agent` are absent from the configuration file.
-/// Propagates any Redis connectivity errors returned by the event loop.
+/// Returns `MagiError::InvalidConfig` if `redis.url`, the resolved active team,
+/// or the resolved active agent are absent. Propagates any Redis connectivity
+/// errors returned by the event loop.
 pub async fn run(format: WatchFormat) -> Result<()> {
     let config = AppConfig::load()?;
     let url = config
@@ -44,14 +45,13 @@ pub async fn run(format: WatchFormat) -> Result<()> {
         .url
         .clone()
         .ok_or_else(|| MagiError::InvalidConfig("redis.url is not configured".to_string()))?;
-    let team =
-        config.identity.active_team.clone().ok_or_else(|| {
-            MagiError::InvalidConfig("identity.active_team is required".to_string())
-        })?;
-    let agent =
-        config.identity.active_agent.clone().ok_or_else(|| {
-            MagiError::InvalidConfig("identity.active_agent is required".to_string())
-        })?;
+    let identity = resolve_identity(&config);
+    let team = identity
+        .team
+        .ok_or_else(|| MagiError::InvalidConfig("identity.active_team is required".to_string()))?;
+    let agent = identity
+        .agent
+        .ok_or_else(|| MagiError::InvalidConfig("identity.active_agent is required".to_string()))?;
 
     watch_loop_with_url(&url, &team, &agent, format).await
 }

@@ -20,7 +20,7 @@ data, or installed skill files directly.**
 
 ```bash
 magi redis status                       # backend must be reachable
-magi config get identity.active_agent   # who you are
+magi config get identity.active_agent   # fallback identity outside a session
 magi config get identity.active_team    # your active team
 ```
 
@@ -48,6 +48,10 @@ magi watch --format line                # stream incoming messages live (Ctrl-C 
   not need quoting; quote when the body contains shell metacharacters.
 - Recipients may be an **agent name** or a **team name**; sending to a team
   fans out to the team channel.
+- In a Codex session, `send`, `inbox`, `history`, and `watch` use the session
+  record keyed by `CODEX_THREAD_ID` before falling back to
+  `identity.active_agent`. Use the `agent:` value from the magi-system context
+  as this session's name when the context and config differ.
 
 ## Onboarding another agent
 
@@ -66,7 +70,8 @@ magi config set identity.active_team <team>   # join does not set the active tea
 - The ephemeral session-agent lifecycle is wired to Codex SessionStart,
   UserPromptSubmit, and SessionEnd hooks. When Redis is reachable and an active
   team is set, Codex automatically runs `magi agent spawn --type codex` for the
-  session and despawns it on session end. On each prompt, Codex receives the
-  current magi-system context: session id, active agent, active team, Redis
-  state, and session record status. Disable spawning with
-  `MAGI_CODEX_EPHEMERAL=0`.
+  session and despawns it on session end. If SessionStart did not record the
+  current session, UserPromptSubmit self-heals by spawning and recording before
+  injecting context. On each prompt, Codex receives the current magi-system
+  context: session id, active agent, active team, Redis state, and session
+  record status. Disable spawning with `MAGI_CODEX_EPHEMERAL=0`.

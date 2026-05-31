@@ -32,8 +32,9 @@ The repository ships two plugins under the `magi` marketplace:
 - **`magi` (Codex)** — manifest at `.codex-plugin/plugin.json`, mirrored into
   `plugins/magi/.codex-plugin/` for marketplace installation, exposing the
   `magi` messaging skill plus Codex session hooks that spawn a session-scoped
-  `codex` agent, inject magi-system context on each prompt, and clean the
-  agent up on session end.
+  `codex` agent, inject magi-system context on each prompt, self-heal a missing
+  session record when SessionStart did not fire, and clean the agent up on
+  session end.
 - **`magi-agent` (Claude Code)** — the event-driven bridge under
   `integrations/magi-agent-plugin/` that turns incoming magi messages into a
   live Claude session.
@@ -98,6 +99,12 @@ magi ssh start|status|stop
 magi config get <key>
 magi config set <key> <value>
 ```
+
+Inside a runtime session, `send`, `inbox`, `history`, and `watch` prefer the
+session record keyed by the runtime session id over the global
+`identity.active_agent` / `identity.active_team` fallback. This lets concurrent
+Codex or Claude Code sessions in the same `$HOME` communicate as their own
+spawned MAGI agent names.
 
 ## Redis
 
