@@ -24,6 +24,10 @@
 //! | `team` | Team membership management: join, leave, list members |
 //! | `watch` | Watch mode: continuous message tailing with line or JSON output |
 
+/// Ephemeral session-scoped agent lifecycle: deterministic MAGI codenames,
+/// spawn (register) and despawn (remove) for short-lived session agents.
+pub mod agent;
+
 /// CLI command definitions and top-level dispatch logic.
 pub mod cli;
 

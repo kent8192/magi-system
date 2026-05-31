@@ -23,7 +23,7 @@
 //! ```
 use clap::Parser;
 use magi::cli::{
-    Cli, Command, ConfigCommand, InviteCommand, RedisCommand, SshCommand, TeamCommand,
+    AgentCommand, Cli, Command, ConfigCommand, InviteCommand, RedisCommand, SshCommand, TeamCommand,
 };
 use magi::error::Result;
 
@@ -70,6 +70,14 @@ async fn main() -> Result<()> {
 
         // Accept an invite and register the current agent as a team member.
         Some(Command::Join { invite }) => magi::invite::join(invite).await,
+
+        // --- Ephemeral session-scoped agents ---
+        Some(Command::Agent { command }) => match command {
+            // Spawn a uniquely named ephemeral agent into the active team.
+            AgentCommand::Spawn { team, agent_type } => magi::agent::spawn(team, agent_type).await,
+            // Remove an ephemeral agent from the team.
+            AgentCommand::Despawn { team, name } => magi::agent::despawn(team, name).await,
+        },
 
         // --- Messaging ---
         // Send a message to another agent or broadcast to a team.

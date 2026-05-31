@@ -79,6 +79,17 @@ pub enum Command {
         invite: String,
     },
 
+    /// Manage ephemeral, session-scoped agents.
+    ///
+    /// `spawn` registers a uniquely named agent (a `<adjective>-<magi>`
+    /// codename) into the active team and adopts it as the active identity;
+    /// `despawn` removes it again. Intended to be driven by a session lifecycle
+    /// (e.g. a Claude Code SessionStart/SessionEnd hook).
+    Agent {
+        #[command(subcommand)]
+        command: AgentCommand,
+    },
+
     /// Send a message to another agent or team via Redis Streams.
     ///
     /// `to` identifies the recipient (agent name or team name).  All
@@ -191,6 +202,35 @@ pub enum TeamCommand {
         /// Name of the team whose members to list.
         #[arg(long)]
         team: Option<String>,
+    },
+}
+
+/// Subcommands for ephemeral session-scoped agent management.
+#[derive(Debug, Subcommand)]
+pub enum AgentCommand {
+    /// Spawn a uniquely named ephemeral agent into the active team.
+    ///
+    /// Assigns the next `<adjective>-<magi>` codename, registers it, sets it as
+    /// `identity.active_agent`, and prints the assigned name.
+    Spawn {
+        /// Team to join; defaults to the configured active team when omitted.
+        #[arg(long)]
+        team: Option<String>,
+        /// Agent type recorded in the profile (defaults to `claude-code`).
+        #[arg(long = "type")]
+        agent_type: Option<String>,
+    },
+    /// Remove an ephemeral agent from a team.
+    ///
+    /// Defaults the team to the active team and the name to the active agent.
+    /// Removing an agent that is already gone is treated as success.
+    Despawn {
+        /// Team to remove from; defaults to the configured active team.
+        #[arg(long)]
+        team: Option<String>,
+        /// Agent name to remove; defaults to the configured active agent.
+        #[arg(long)]
+        name: Option<String>,
     },
 }
 
