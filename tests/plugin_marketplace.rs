@@ -23,10 +23,10 @@ fn codex_marketplace_exposes_magi_plugin() {
     );
 
     let marketplace_plugin_manifest =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/magi/.codex-plugin/plugin.json");
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/magi/plugin.json");
     assert!(
         marketplace_plugin_manifest.exists(),
-        "magi marketplace plugin should include a Codex plugin manifest"
+        "magi marketplace plugin root should include a Codex plugin manifest"
     );
     assert_eq!(
         std::fs::read_to_string(plugin_manifest).expect("read root Codex plugin manifest"),
@@ -36,11 +36,22 @@ fn codex_marketplace_exposes_magi_plugin() {
 
     let root_skill =
         Path::new(env!("CARGO_MANIFEST_DIR")).join(".codex-plugin/skills/magi/SKILL.md");
-    let marketplace_skill = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("plugins/magi/.codex-plugin/skills/magi/SKILL.md");
+    let marketplace_skill =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/magi/skills/magi/SKILL.md");
     assert_eq!(
         std::fs::read_to_string(root_skill).expect("read root Codex skill"),
         std::fs::read_to_string(marketplace_skill).expect("read marketplace Codex skill")
+    );
+
+    let marketplace_plugin_manifest_copy =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/magi/.codex-plugin/plugin.json");
+    assert_eq!(
+        std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/magi/plugin.json")
+        )
+        .expect("read marketplace root Codex plugin manifest"),
+        std::fs::read_to_string(marketplace_plugin_manifest_copy)
+            .expect("read marketplace .codex-plugin manifest")
     );
 }
 
@@ -71,7 +82,7 @@ fn codex_plugin_declares_session_agent_hooks() {
     assert_eq!(root_manifest["hooks"], "./hooks/hooks.json");
 
     let marketplace_manifest_path =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/magi/.codex-plugin/plugin.json");
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/magi/plugin.json");
     let marketplace_manifest: Value = serde_json::from_str(
         &std::fs::read_to_string(marketplace_manifest_path)
             .expect("read marketplace Codex plugin manifest"),
@@ -81,7 +92,7 @@ fn codex_plugin_declares_session_agent_hooks() {
 
     let root_hooks = Path::new(env!("CARGO_MANIFEST_DIR")).join(".codex-plugin/hooks/hooks.json");
     let marketplace_hooks =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/magi/.codex-plugin/hooks/hooks.json");
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/magi/hooks/hooks.json");
     let hooks: Value = serde_json::from_str(
         &std::fs::read_to_string(&root_hooks).expect("read root Codex hooks config"),
     )
@@ -94,6 +105,18 @@ fn codex_plugin_declares_session_agent_hooks() {
         std::fs::read_to_string(marketplace_hooks).expect("read marketplace Codex hooks config")
     );
 
+    assert_eq!(
+        std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/magi/hooks/hooks.json")
+        )
+        .expect("read marketplace root hooks config"),
+        std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("plugins/magi/.codex-plugin/hooks/hooks.json")
+        )
+        .expect("read marketplace .codex-plugin hooks config")
+    );
+
     for hook in [
         "magi-codex-session-start.sh",
         "magi-codex-prompt-context.sh",
@@ -103,6 +126,9 @@ fn codex_plugin_declares_session_agent_hooks() {
             .join(".codex-plugin/hooks")
             .join(hook);
         let marketplace_hook = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("plugins/magi/hooks")
+            .join(hook);
+        let marketplace_hook_copy = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("plugins/magi/.codex-plugin/hooks")
             .join(hook);
         assert!(
@@ -111,11 +137,21 @@ fn codex_plugin_declares_session_agent_hooks() {
         );
         assert!(
             marketplace_hook.exists(),
-            "{hook} should exist in marketplace Codex plugin"
+            "{hook} should exist in marketplace Codex plugin root"
         );
         assert_eq!(
             std::fs::read_to_string(root_hook).expect("read root Codex hook"),
             std::fs::read_to_string(marketplace_hook).expect("read marketplace Codex hook")
+        );
+        assert_eq!(
+            std::fs::read_to_string(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join(".codex-plugin/hooks")
+                    .join(hook)
+            )
+            .expect("read root Codex hook"),
+            std::fs::read_to_string(marketplace_hook_copy)
+                .expect("read marketplace .codex-plugin hook")
         );
     }
 }

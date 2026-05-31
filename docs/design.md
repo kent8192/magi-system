@@ -6,9 +6,11 @@
 - State directory: `~/.magi`
 - Install locations: `~/.agents/skills/magi/bin/magi`, `~/.local/bin/magi`
 - Codex plugin surface: `.codex-plugin/plugin.json` with `skills/magi/`
-  mirroring the installed Codex skill instructions. The marketplace wrapper at
-  `plugins/magi/.codex-plugin/` mirrors those files because Codex marketplace
-  sources must point at a plugin directory.
+  mirroring the installed Codex skill instructions. The marketplace package at
+  `plugins/magi/` mirrors those files at the package root because Codex
+  marketplace sources point at a plugin directory and installed hooks/skills are
+  resolved from that plugin root. A `.codex-plugin/` copy remains in the package
+  for tooling that inspects the conventional Codex plugin manifest location.
 - Claude Code plugin surface: `integrations/magi-agent-plugin/` (the event-driven
   `magi-agent` bridge) with its own `.claude-plugin/` manifests.
 - Plugin distribution: the repository-root `.claude-plugin/marketplace.json`

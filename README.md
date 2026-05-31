@@ -40,7 +40,9 @@ repository or marketplace name with the `MAGI_PLUGIN_REPO` and
 The repository ships two plugins under the `magi` marketplace:
 
 - **`magi` (Codex)** — manifest at `.codex-plugin/plugin.json`, mirrored into
-  `plugins/magi/.codex-plugin/` for marketplace installation, exposing the
+  the `plugins/magi/` marketplace package root for installation. The package
+  keeps root-level `plugin.json`, `hooks/`, and `skills/` copies because Codex
+  resolves plugin resources from the installed plugin root. It exposes the
   `magi` messaging skill plus Codex session hooks that spawn a session-scoped
   `codex` agent, inject magi-system context on each prompt, self-heal a missing
   session record when SessionStart did not fire, and clean the agent up on
