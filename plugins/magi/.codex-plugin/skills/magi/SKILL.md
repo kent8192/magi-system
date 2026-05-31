@@ -20,13 +20,14 @@ data, or installed skill files directly.**
 
 ```bash
 magi redis status                       # backend must be reachable
-magi agent name                         # current session-aware agent name
 magi config get identity.active_team    # your active team
 ```
 
 If Redis is down: `magi redis start`. If the team is unset:
 `magi config set identity.active_team <team>`. Agent names are session-scoped;
-use `magi agent spawn --team <team> --type codex` for manual lifecycle control.
+prefer the `magi-system context` injected by Codex hooks for this session's
+current agent name. Use `magi agent spawn --team <team> --type codex` only for
+manual lifecycle control.
 
 ## Common operations
 
@@ -48,9 +49,10 @@ magi watch --format line                # stream incoming messages live (Ctrl-C 
   not need quoting; quote when the body contains shell metacharacters.
 - Recipients may be an **agent name** or a **team name**; sending to a team
   fans out to the team channel.
-- In a Codex session, `send`, `inbox`, `history`, and `watch` use the session
-  record keyed by `CODEX_THREAD_ID`. There is no persistent active-agent
-  fallback. Use `magi agent name` when you need to report this session's name.
+- In a Codex session, `send`, `inbox`, `history`, and `watch` use hook-created
+  session state. The hook-injected `magi-system context` is the preferred source
+  for this session's agent name; the CLI has no persistent active-agent
+  fallback.
 
 ## Onboarding another agent
 
@@ -73,4 +75,5 @@ magi config set identity.active_team <team>   # join does not set the active tea
   current session, UserPromptSubmit self-heals by spawning and recording before
   injecting context. On each prompt, Codex receives the current magi-system
   context: session id, active agent, active team, Redis state, and session
-  record status. Disable spawning with `MAGI_CODEX_EPHEMERAL=0`.
+  record status. Treat that hook-derived active agent as authoritative for
+  self-identification. Disable spawning with `MAGI_CODEX_EPHEMERAL=0`.

@@ -18,6 +18,7 @@ if [ -z "$MAGI" ]; then
 fi
 
 sanitize() { printf '%s' "${1:-}" | tr -d '"\\\n\r' ; }
+safe_key() { printf '%s' "${1:-}" | tr -cd 'A-Za-z0-9._-' ; }
 
 ephemeral_on() {
   case "$(printf '%s' "${MAGI_CODEX_EPHEMERAL:-1}" | tr '[:upper:]' '[:lower:]')" in
@@ -34,10 +35,13 @@ json_string() {
 
 STATE_DIR="${MAGI_CODEX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/magi-codex}"
 SESSIONS_DIR="$STATE_DIR/sessions"
+CURRENT_DIR="$STATE_DIR/current"
 SESSION_ID="$(json_string session_id)"
 if [ -z "$SESSION_ID" ]; then
   SESSION_ID="${CODEX_THREAD_ID:-${CODEX_SESSION_ID:-}}"
 fi
+PROJECT_CWD="$(json_string cwd)"
+[ -n "$PROJECT_CWD" ] || PROJECT_CWD="${PWD:-}"
 
 redis_state="unavailable"
 agent=""
@@ -48,14 +52,13 @@ if { [ -n "$MAGI" ] && [ -x "$MAGI" ]; }; then
   else
     redis_state="DOWN"
   fi
-  agent="$(sanitize "$("$MAGI" agent name 2>/dev/null)")"
   team="$(sanitize "$("$MAGI" config get identity.active_team 2>/dev/null)")"
 fi
 
 session_record="missing"
 session_team=""
 session_file=""
-session_key="$(printf '%s' "$SESSION_ID" | tr -cd 'A-Za-z0-9._-')"
+session_key="$(safe_key "$SESSION_ID")"
 if [ -n "$session_key" ]; then
   session_file="$SESSIONS_DIR/$session_key.agent"
   if [ -f "$session_file" ]; then
@@ -81,6 +84,14 @@ if [ "$session_record" != "missing" ] && [ "$session_record" != "present" ]; the
 fi
 if [ -n "$session_team" ]; then
   team="$session_team"
+fi
+current_file=""
+if [ -n "$PROJECT_CWD" ]; then
+  current_file="$CURRENT_DIR/$(safe_key "$PROJECT_CWD").agent"
+fi
+if [ -n "$agent" ] && [ -n "$team" ] && [ -n "$current_file" ]; then
+  mkdir -p "$CURRENT_DIR" 2>/dev/null || true
+  printf '%s\n%s\n' "$agent" "$team" >"$current_file" 2>/dev/null || true
 fi
 
 ctx="magi-system context. session_id: ${SESSION_ID:-unset}; agent: ${agent:-unset}; team: ${team:-unset}; redis: ${redis_state}; session_record: ${session_record}; state_dir: $(sanitize "$STATE_DIR")."

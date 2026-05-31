@@ -27,6 +27,7 @@ truthy() {
 }
 
 sanitize() { printf '%s' "${1:-}" | tr -d '"\\\n\r' ; }
+safe_key() { printf '%s' "${1:-}" | tr -cd 'A-Za-z0-9._-' ; }
 
 json_string() {
   printf '%s' "$HOOK_INPUT" |
@@ -38,10 +39,13 @@ redis_reachable() { "$MAGI" redis status >/dev/null 2>&1; }
 
 STATE_DIR="${MAGI_CODEX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/magi-codex}"
 SESSIONS_DIR="$STATE_DIR/sessions"
+CURRENT_DIR="$STATE_DIR/current"
 SESSION_ID="$(json_string session_id)"
 if [ -z "$SESSION_ID" ]; then
   SESSION_ID="${CODEX_THREAD_ID:-${CODEX_SESSION_ID:-}}"
 fi
+PROJECT_CWD="$(json_string cwd)"
+[ -n "$PROJECT_CWD" ] || PROJECT_CWD="${PWD:-}"
 
 if ! redis_reachable && truthy "${MAGI_CODEX_AUTOSTART_REDIS:-}"; then
   "$MAGI" redis start >/dev/null 2>&1 || true
@@ -69,7 +73,17 @@ ephemeral_on() {
 
 session_file=""
 if [ -n "$SESSION_ID" ]; then
-  session_file="$SESSIONS_DIR/$(printf '%s' "$SESSION_ID" | tr -cd 'A-Za-z0-9._-').agent"
+  session_file="$SESSIONS_DIR/$(safe_key "$SESSION_ID").agent"
+fi
+current_file=""
+if [ -n "$PROJECT_CWD" ]; then
+  current_file="$CURRENT_DIR/$(safe_key "$PROJECT_CWD").agent"
+fi
+
+if [ -n "$session_file" ] && [ -f "$session_file" ]; then
+  agent="$(sanitize "$(sed -n '1p' "$session_file" 2>/dev/null)")"
+  session_team="$(sanitize "$(sed -n '2p' "$session_file" 2>/dev/null)")"
+  [ -n "$session_team" ] && team="$session_team"
 fi
 
 if ephemeral_on && [ "$redis_state" = "reachable" ] && [ -n "$team" ] \
@@ -80,6 +94,10 @@ if ephemeral_on && [ "$redis_state" = "reachable" ] && [ -n "$team" ] \
     printf '%s\n%s\n' "$spawned" "$team" >"$session_file" 2>/dev/null || true
     agent="$spawned"
   fi
+fi
+if [ -n "$agent" ] && [ -n "$team" ] && [ -n "$current_file" ]; then
+  mkdir -p "$CURRENT_DIR" 2>/dev/null || true
+  printf '%s\n%s\n' "$agent" "$team" >"$current_file" 2>/dev/null || true
 fi
 
 ctx="magi messaging available. Redis: ${redis_state}; agent: ${agent:-unset}; team: ${team:-unset}. Use the magi CLI for messaging (send/inbox/history/team); do not read or edit ~/.magi directly."

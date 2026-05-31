@@ -57,6 +57,11 @@ teardown() {
   [ "$(sed -n '1p' "$file")" = "quiet-melchior" ]
   [ "$(sed -n '2p' "$file")" = "testteam" ]
   [ "$(sed -n '3p' "$file")" = "" ]
+
+  local current="$MAGI_CODEX_STATE_DIR/current/tmpproject.agent"
+  [ -f "$current" ]
+  [ "$(sed -n '1p' "$current")" = "quiet-melchior" ]
+  [ "$(sed -n '2p' "$current")" = "testteam" ]
 }
 
 @test "Codex SessionEnd despawns the session agent" {
@@ -106,6 +111,11 @@ teardown() {
   [[ "$output" == *"team: testteam"* ]]
   [[ "$output" == *"redis: reachable"* ]]
   [[ "$output" == *"session_record: quiet-melchior"* ]]
+
+  local current="$MAGI_CODEX_STATE_DIR/current/tmpproject.agent"
+  [ -f "$current" ]
+  [ "$(sed -n '1p' "$current")" = "quiet-melchior" ]
+  [ "$(sed -n '2p' "$current")" = "testteam" ]
 }
 
 @test "Codex UserPromptSubmit spawns when SessionStart did not record this session" {

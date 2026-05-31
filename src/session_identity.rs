@@ -2,8 +2,10 @@
 //!
 //! Session hooks create a small record keyed by the runtime session id. When a
 //! `magi` command is executed inside that session, the record supplies the
-//! agent name. Persistent config stores only the active team, so concurrent
-//! sessions cannot overwrite each other's agent identity.
+//! agent name. Codex hooks also write a cwd-scoped current pointer for shell
+//! subprocesses that do not inherit the session id. Persistent config stores
+//! only the active team, so concurrent sessions cannot overwrite each other's
+//! agent identity.
 
 use std::env;
 use std::fs;
@@ -66,6 +68,13 @@ where
         if session.agent.is_some() {
             identity.agent = session.agent;
         }
+    } else if let Some(current) = current_identity_from_env(&mut env) {
+        if current.team.is_some() {
+            identity.team = current.team;
+        }
+        if current.agent.is_some() {
+            identity.agent = current.agent;
+        }
     }
 
     identity
@@ -91,6 +100,29 @@ where
             .join("sessions")
             .join(format!("{session_key}.agent"));
         if let Some(identity) = read_session_file(session_file) {
+            return Some(identity);
+        }
+    }
+
+    None
+}
+
+fn current_identity_from_env<F>(env: &mut F) -> Option<ActiveIdentity>
+where
+    F: FnMut(&str) -> Option<String>,
+{
+    let project = first_non_empty_env(env, &["MAGI_PROJECT_CWD", "PWD"]).or_else(|| {
+        env::current_dir()
+            .ok()
+            .map(|path| path.display().to_string())
+    })?;
+    let project_key = sanitize_session_key(&project)?;
+
+    for state_dir in state_dirs(env) {
+        let current_file = state_dir
+            .join("current")
+            .join(format!("{project_key}.agent"));
+        if let Some(identity) = read_session_file(current_file) {
             return Some(identity);
         }
     }
