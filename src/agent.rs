@@ -73,9 +73,9 @@ pub fn compose_name(adjective: &str, suffix: &str) -> String {
 ///
 /// Resolves the current process identity the same way messaging commands do:
 /// runtime session records keyed by `MAGI_SESSION_ID`, `CODEX_THREAD_ID`,
-/// `CODEX_SESSION_ID`, or `CLAUDE_SESSION_ID`. Runtime session records are the
-/// only source for the session agent; the agent name is never read from or
-/// written to persistent config.
+/// `CODEX_SESSION_ID`, or `CLAUDE_SESSION_ID`, then Codex hook-maintained
+/// current pointers. The agent name is never read from or written to persistent
+/// config.
 ///
 /// # Errors
 ///

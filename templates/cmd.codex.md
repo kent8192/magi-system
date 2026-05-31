@@ -5,6 +5,9 @@ description: Redis-backed cross-agent messaging for Codex and other CLI agents.
 
 Use `~/.agents/skills/__SKILL_NAME__/bin/magi` for all messaging operations.
 Do not read or edit `~/.magi` directly.
+When Codex hook output provides a `magi-system context` line, prefer its
+`agent:` and `team:` values for the current session; use the hook-derived value
+first.
 
 Recommended default action (non-interactive):
 

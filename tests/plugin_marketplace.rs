@@ -45,6 +45,22 @@ fn codex_marketplace_exposes_magi_plugin() {
 }
 
 #[test]
+fn codex_skill_prefers_hook_context_for_current_agent_name() {
+    let root_skill =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(".codex-plugin/skills/magi/SKILL.md");
+    let skill = std::fs::read_to_string(root_skill).expect("read root Codex skill");
+
+    assert!(
+        skill.contains("hook-injected `magi-system context` is the preferred source"),
+        "Codex skill should prefer hook-derived context for the current agent name"
+    );
+    assert!(
+        !skill.contains("magi agent name"),
+        "Codex skill should not tell agents to run `magi agent name` for self-identification"
+    );
+}
+
+#[test]
 fn codex_plugin_declares_session_agent_hooks() {
     let root_manifest_path =
         Path::new(env!("CARGO_MANIFEST_DIR")).join(".codex-plugin/plugin.json");

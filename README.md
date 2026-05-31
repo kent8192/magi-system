@@ -116,11 +116,13 @@ magi config get <key>
 magi config set <key> <value>
 ```
 
-Inside a runtime session, `send`, `inbox`, `history`, and `watch` require the
-session record keyed by the runtime session id for the agent name, while the
-team comes from that record or `identity.active_team`. Persistent config never
-stores an active agent, so concurrent Codex or Claude Code sessions in the same
-`$HOME` cannot overwrite each other's MAGI agent names.
+Inside a runtime session, `send`, `inbox`, `history`, `watch`, and `agent name`
+prefer the session record keyed by the runtime session id for the agent name.
+Codex hooks also maintain a cwd-scoped current pointer so shell commands can
+recover the hook-derived agent name even when the Codex session id is not passed
+through the subprocess environment. Persistent config never stores an active
+agent, so concurrent Codex or Claude Code sessions in the same `$HOME` cannot
+overwrite each other's MAGI agent names.
 
 ## Redis
 

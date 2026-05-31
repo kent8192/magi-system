@@ -92,11 +92,14 @@ Codex uses `MAGI_CODEX_EPHEMERAL=0`.
 
 Interactive messaging commands resolve identity in two layers. When a runtime
 session id is available (`MAGI_SESSION_ID`, `CODEX_THREAD_ID`,
-`CODEX_SESSION_ID`, or `CLAUDE_SESSION_ID`), `send`, `inbox`, `history`, and
-`watch` first read the matching session record under the Codex or Claude Code
-state directory. If no record exists, there is no agent-name fallback; commands
-that need an agent fail instead of reusing another session's name. The team can
-still fall back to `identity.active_team`.
+`CODEX_SESSION_ID`, or `CLAUDE_SESSION_ID`), `send`, `inbox`, `history`,
+`watch`, and `agent name` first read the matching session record under the Codex
+or Claude Code state directory. Codex hooks also write a cwd-scoped current
+pointer from the hook-derived context, which lets shell commands recover the
+same agent name when the Codex session id is not inherited by the subprocess.
+If no session record or hook current pointer exists, there is no agent-name
+fallback; commands that need an agent fail instead of reusing another session's
+name. The team can still fall back to `identity.active_team`.
 
 The Codex plugin also injects a compact UserPromptSubmit context block before
 each prompt with the resolved session id, active magi agent, active team, Redis

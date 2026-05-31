@@ -22,16 +22,20 @@ json_string() {
     sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" |
     head -1
 }
+safe_key() { printf '%s' "${1:-}" | tr -cd 'A-Za-z0-9._-' ; }
 
 STATE_DIR="${MAGI_CODEX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/magi-codex}"
 SESSIONS_DIR="$STATE_DIR/sessions"
+CURRENT_DIR="$STATE_DIR/current"
 SESSION_ID="$(json_string session_id)"
 if [ -z "$SESSION_ID" ]; then
   SESSION_ID="${CODEX_THREAD_ID:-${CODEX_SESSION_ID:-}}"
 fi
+PROJECT_CWD="$(json_string cwd)"
+[ -n "$PROJECT_CWD" ] || PROJECT_CWD="${PWD:-}"
 
 [ -n "$SESSION_ID" ] || exit 0
-session_file="$SESSIONS_DIR/$(printf '%s' "$SESSION_ID" | tr -cd 'A-Za-z0-9._-').agent"
+session_file="$SESSIONS_DIR/$(safe_key "$SESSION_ID").agent"
 [ -f "$session_file" ] || exit 0
 
 name="$(sed -n '1p' "$session_file" 2>/dev/null || true)"
@@ -42,5 +46,10 @@ if [ -n "$name" ] && [ -n "$team" ]; then
 fi
 
 rm -f "$session_file" 2>/dev/null || true
+if [ -n "$PROJECT_CWD" ] && [ -n "$name" ]; then
+  current_file="$CURRENT_DIR/$(safe_key "$PROJECT_CWD").agent"
+  current_name="$(sed -n '1p' "$current_file" 2>/dev/null || true)"
+  [ "$current_name" = "$name" ] && rm -f "$current_file" 2>/dev/null || true
+fi
 
 exit 0
