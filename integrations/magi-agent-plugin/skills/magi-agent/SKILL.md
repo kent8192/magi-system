@@ -106,6 +106,10 @@ turn's response boundary is unambiguous.
 | `MAGI_AGENT_NODE` | `node` | Node binary used to run the bridge (needs ≥22.18) |
 | `MAGI_AGENT_STATE_DIR` | `~/.local/state/magi-agent` | Where the daemon pid/log live |
 
+The session hook stores nonblocking Redis health state next to each ephemeral
+session record. After three due consecutive failures (1s, 2s, then 4s backoff),
+the next reachable hook run despawns the stale agent and clears the record.
+
 Enabling tools is unattended automation with real side effects. If you opt in,
 prefer a narrow `MAGI_AGENT_ALLOWED_TOOLS` set and a non-interactive
 `MAGI_AGENT_PERMISSION_MODE` (the daemon cannot answer interactive prompts).

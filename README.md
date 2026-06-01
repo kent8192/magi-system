@@ -46,7 +46,7 @@ The repository ships two plugins under the `magi` marketplace:
   `magi` messaging skill plus Codex session hooks that spawn a session-scoped
   `codex` agent, inject magi-system context on each prompt, self-heal a missing
   session record when SessionStart did not fire, and clean the agent up on
-  session end.
+  session end or after repeated Redis health-check failures.
 - **`magi-agent` (Claude Code)** — the event-driven bridge under
   `integrations/magi-agent-plugin/` that turns incoming magi messages into a
   live Claude session.
@@ -125,6 +125,12 @@ recover the hook-derived agent name even when the Codex session id is not passed
 through the subprocess environment. Persistent config never stores an active
 agent, so concurrent Codex or Claude Code sessions in the same `$HOME` cannot
 overwrite each other's MAGI agent names.
+
+Session hooks track Redis health for recorded ephemeral agents without blocking
+startup or prompt handling. Three due consecutive failed health checks mark a
+session for cleanup using a 1s, 2s, then 4s exponential backoff; when Redis is
+reachable again, the hook runs `magi agent despawn` and clears the local session
+record.
 
 ## Redis
 

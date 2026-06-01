@@ -12,11 +12,16 @@ setup() {
 
   CALLS="$TEST_HOME/calls.log"
   : >"$CALLS"
+  REDIS_STATUS_FILE="$TEST_HOME/redis.status"
+  printf 'up\n' >"$REDIS_STATUS_FILE"
 
   FAKE_MAGI="$TEST_HOME/magi"
   cat >"$FAKE_MAGI" <<EOF
 #!/usr/bin/env bash
-[ "\$1 \$2" = "redis status" ] && exit 0
+if [ "\$1 \$2" = "redis status" ]; then
+  [ "\$(cat "$REDIS_STATUS_FILE" 2>/dev/null)" = "down" ] && exit 1
+  exit 0
+fi
 if [ "\$1" = "config" ] && [ "\$2" = "get" ]; then
   case "\$3" in
     identity.active_team) printf 'testteam' ;;
@@ -138,4 +143,54 @@ teardown() {
   [ "$status" -eq 0 ]
   [ ! -f "$MAGI_CODEX_STATE_DIR/sessions/codex-4.agent" ]
   ! grep -q '^spawn ' "$CALLS"
+}
+
+@test "Codex UserPromptSubmit records Redis health failures with nonblocking backoff" {
+  mkdir -p "$MAGI_CODEX_STATE_DIR/sessions"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_CODEX_STATE_DIR/sessions/thread-health.agent"
+  printf 'down\n' >"$REDIS_STATUS_FILE"
+
+  MAGI_CODEX_HEALTH_NOW=100 CODEX_THREAD_ID=thread-health run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
+  [ "$status" -eq 0 ]
+  local health="$MAGI_CODEX_STATE_DIR/sessions/thread-health.health"
+  [ -f "$health" ]
+  grep -q '^failures=1$' "$health"
+  grep -q '^next_check_at=101$' "$health"
+  grep -q '^cleanup_pending=0$' "$health"
+
+  MAGI_CODEX_HEALTH_NOW=100 CODEX_THREAD_ID=thread-health run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
+  [ "$status" -eq 0 ]
+  grep -q '^failures=1$' "$health"
+
+  MAGI_CODEX_HEALTH_NOW=101 CODEX_THREAD_ID=thread-health run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
+  [ "$status" -eq 0 ]
+  grep -q '^failures=2$' "$health"
+  grep -q '^next_check_at=103$' "$health"
+
+  MAGI_CODEX_HEALTH_NOW=103 CODEX_THREAD_ID=thread-health run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
+  [ "$status" -eq 0 ]
+  grep -q '^failures=3$' "$health"
+  grep -q '^next_check_at=107$' "$health"
+  grep -q '^cleanup_pending=1$' "$health"
+  ! grep -q '^despawn ' "$CALLS"
+}
+
+@test "Codex UserPromptSubmit despawns cleanup-pending session after Redis recovers" {
+  mkdir -p "$MAGI_CODEX_STATE_DIR/sessions" "$MAGI_CODEX_STATE_DIR/current"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_CODEX_STATE_DIR/sessions/thread-clean.agent"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_CODEX_STATE_DIR/current/tmpproject.agent"
+  cat >"$MAGI_CODEX_STATE_DIR/sessions/thread-clean.health" <<'EOF'
+agent=quiet-melchior
+team=testteam
+failures=3
+next_check_at=107
+cleanup_pending=1
+EOF
+
+  CODEX_THREAD_ID=thread-clean run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
+  [ "$status" -eq 0 ]
+  grep -q "despawn agent despawn --team testteam --name quiet-melchior" "$CALLS"
+  [ ! -f "$MAGI_CODEX_STATE_DIR/sessions/thread-clean.health" ]
+  [ -f "$MAGI_CODEX_STATE_DIR/current/tmpproject.agent" ]
+  [ "$(grep -c '^spawn ' "$CALLS")" -eq 1 ]
 }
