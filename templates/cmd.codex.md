@@ -8,6 +8,9 @@ Do not read or edit `~/.magi` directly.
 When Codex hook output provides a `magi-system context` line, prefer its
 `agent:` and `team:` values for the current session; use the hook-derived value
 first.
+Codex hooks ensure the managed app-server daemon is running before starting or
+restarting the live `magi codex bridge`, unless disabled with
+`MAGI_CODEX_APP_SERVER_DAEMON=0`.
 
 Recommended default action (non-interactive):
 

@@ -52,10 +52,11 @@ The repository ships two plugins under the `magi` marketplace:
   `codex` agent, inject magi-system context on each prompt, self-heal a missing
   session record when SessionStart did not fire, and clean the agent up on
   session end or after repeated Redis health-check failures. The hooks also
-  launch `magi codex bridge` for the current Codex thread so Redis Pub/Sub
-  wakeups become live Codex app-server turns, and they report the bridge state
-  on each prompt. App-server delivery failures keep the bridge in `retrying`
-  until a later delivery succeeds; Codex runtimes without a reachable app-server
+  ensure the managed Codex app-server daemon is running, then launch
+  `magi codex bridge` for the current Codex thread so Redis Pub/Sub wakeups
+  become live Codex app-server turns. Prompt hooks report the bridge state on
+  each prompt. App-server delivery failures keep the bridge in `retrying` until
+  a later delivery succeeds; Codex runtimes without a reachable app-server
   control socket are reported as `unsupported`.
 - **`magi-agent` (Claude Code)** — the event-driven bridge under
   `integrations/magi-agent-plugin/` that turns incoming magi messages into a

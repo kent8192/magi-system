@@ -151,6 +151,29 @@ bridge_on() {
   esac
 }
 
+daemon_auto_on() {
+  case "$(printf '%s' "${MAGI_CODEX_APP_SERVER_DAEMON:-1}" | tr '[:upper:]' '[:lower:]')" in
+    0 | false | no | off) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+codex_daemon_running() {
+  local codex_cli="${MAGI_CODEX_CLI:-codex}"
+  command -v "$codex_cli" >/dev/null 2>&1 || return 1
+  "$codex_cli" app-server daemon version 2>/dev/null |
+    grep -q '"status"[[:space:]]*:[[:space:]]*"running"'
+}
+
+ensure_codex_daemon() {
+  [ -z "${MAGI_CODEX_APP_SERVER_SOCKET:-}" ] || return 0
+  daemon_auto_on || return 0
+  codex_daemon_running && return 0
+  local codex_cli="${MAGI_CODEX_CLI:-codex}"
+  command -v "$codex_cli" >/dev/null 2>&1 || return 0
+  "$codex_cli" app-server daemon start >/dev/null 2>&1 || true
+}
+
 status_field() {
   local file="$1" key="$2"
   [ -f "$file" ] || return 0
@@ -240,6 +263,7 @@ if bridge_on; then
       bridge_error="$(sanitize "$(status_field "$bridge_status_file" last_error)")"
     else
       rm -f "$bridge_pid_file" 2>/dev/null || true
+      ensure_codex_daemon
       start_bridge "$bridge_pid_file" "$bridge_log_file" "$bridge_status_file"
       bridge_state="starting"
     fi
