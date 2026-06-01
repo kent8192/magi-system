@@ -119,6 +119,11 @@ bridge_running() {
   [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
 }
 
+bridge_socket_args=()
+if [ -n "${MAGI_CODEX_APP_SERVER_SOCKET:-}" ]; then
+  bridge_socket_args=(--socket "$MAGI_CODEX_APP_SERVER_SOCKET")
+fi
+
 status_field() {
   local file="$1" key="$2"
   [ -f "$file" ] || return 0
@@ -140,7 +145,7 @@ if bridge_on && [ "$redis_state" = "reachable" ] && [ -n "$agent" ] && [ -n "$te
     MAGI_SESSION_ID="$SESSION_ID" CODEX_THREAD_ID="$SESSION_ID" CODEX_SESSION_ID="$SESSION_ID" \
       MAGI_CODEX_STATE_DIR="$STATE_DIR" \
       "$MAGI" codex bridge --thread "$SESSION_ID" --cwd "$PROJECT_CWD" \
-      --codex "${MAGI_CODEX_CLI:-codex}" \
+      --codex "${MAGI_CODEX_CLI:-codex}" "${bridge_socket_args[@]}" \
       >>"$bridge_log_file" 2>&1 &
     bridge_pid="$!"
     printf '%s\n' "$bridge_pid" >"$bridge_pid_file" 2>/dev/null || true

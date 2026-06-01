@@ -89,5 +89,8 @@ magi config set identity.active_team <team>   # join does not set the active tea
   `turn/start`. If Codex rejects the new turn because another turn is active,
   the bridge falls back to `thread/inject_items` so the message is still present
   in model-visible thread history. Prompt hooks report the bridge as starting,
-  running, retrying, stopped, or disabled. Set `MAGI_CODEX_CLI` when the desired
-  Codex CLI is not the first `codex` on PATH.
+  running, retrying, unsupported, stopped, or disabled. Set `MAGI_CODEX_CLI`
+  when the desired Codex CLI is not the first `codex` on PATH, and set
+  `MAGI_CODEX_APP_SERVER_SOCKET` when the bridge should use a specific Unix
+  app-server control socket. `stdio://` app-server processes cannot be reached
+  by the external bridge.

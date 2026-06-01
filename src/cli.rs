@@ -304,6 +304,9 @@ pub enum CodexCommand {
         /// Codex CLI executable used for `codex app-server proxy`.
         #[arg(long, default_value = "codex")]
         codex: String,
+        /// Codex app-server Unix control socket used by `codex app-server proxy`.
+        #[arg(long)]
+        socket: Option<std::path::PathBuf>,
     },
 }
 

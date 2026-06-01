@@ -4,7 +4,7 @@ use std::io::Write;
 
 use magi::codex_bridge::{
     bridge_status_error_message, bridge_status_state_for_error, build_inject_items_request,
-    build_turn_start_request, format_context_line, submit_to_codex,
+    build_turn_start_request, format_context_line, submit_to_codex, submit_to_codex_with_socket,
 };
 use tempfile::NamedTempFile;
 
@@ -71,6 +71,19 @@ fn proxy_startup_failures_are_reported_as_retrying_bridge_status() {
     );
 
     assert_eq!(bridge_status_state_for_error(&error), "retrying");
+}
+
+#[test]
+fn missing_control_socket_is_reported_as_unsupported_bridge_status() {
+    let error = magi::error::MagiError::UnsupportedRuntime(
+        "Codex app-server control socket not found at /tmp/codex.sock; set MAGI_CODEX_APP_SERVER_SOCKET to a reachable Unix socket or start a managed Codex app-server daemon. stdio:// app-server processes cannot be reached by magi codex bridge."
+            .to_string(),
+    );
+
+    assert_eq!(bridge_status_state_for_error(&error), "unsupported");
+    let message = bridge_status_error_message(&error);
+    assert!(message.contains("MAGI_CODEX_APP_SERVER_SOCKET"));
+    assert!(message.contains("stdio://"));
 }
 
 #[test]
@@ -145,4 +158,54 @@ done
     assert!(calls.contains(r#""method":"thread/resume""#));
     assert!(calls.contains(r#""method":"turn/start""#));
     assert!(calls.contains(r#""method":"thread/inject_items""#));
+}
+
+#[tokio::test]
+async fn submit_to_codex_passes_explicit_socket_to_proxy() {
+    let mut script = NamedTempFile::new().expect("temp script");
+    writeln!(
+        script,
+        r#"#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >"$CODEX_PROXY_ARGS"
+while IFS= read -r line; do
+  id="$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')"
+  printf '{{"id":%s,"result":{{}}}}\n' "$id"
+done
+"#
+    )
+    .expect("write script");
+    let script = script.into_temp_path();
+    std::fs::set_permissions(&script, {
+        let mut permissions = std::fs::metadata(&script).unwrap().permissions();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            permissions.set_mode(0o755);
+        }
+        permissions
+    })
+    .expect("chmod script");
+
+    let args = NamedTempFile::new().expect("temp args");
+    std::env::set_var("CODEX_PROXY_ARGS", args.path());
+    let socket_dir = tempfile::tempdir().expect("socket dir");
+    let socket = socket_dir.path().join("app-server.sock");
+
+    submit_to_codex_with_socket(
+        script.to_str().unwrap(),
+        &socket,
+        "thread-123",
+        Some("/tmp/project"),
+        "1-0",
+        "alice->bob: status?",
+    )
+    .await
+    .expect("delivery succeeds");
+
+    let called_args = std::fs::read_to_string(args.path()).expect("read args");
+    assert_eq!(
+        called_args.trim(),
+        format!("app-server proxy --sock {}", socket.display())
+    );
 }
