@@ -26,8 +26,8 @@ body:
       label: Steps to Reproduce
       description: Provide the smallest command sequence that reproduces the issue.
       placeholder: |
-        1. Run `./install.sh --cmd agmsg`
-        2. Run `scripts/join.sh ...`
+        1. Run `./install.sh`
+        2. Run `magi join --invite ...`
         3. Observe ...
     validations:
       required: true

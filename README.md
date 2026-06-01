@@ -22,12 +22,17 @@ Pub/Sub is used as a low-latency wakeup for `watch`.
 ./install.sh
 ```
 
-The installer builds the Rust binary and places it at:
+When run inside a checkout, the installer builds the Rust binary and places it at:
 
 - `~/.agents/skills/magi/bin/magi`
 - `~/.local/bin/magi`
 
 Configuration and managed Redis state are stored under `~/.magi`.
+
+When `install.sh` is run outside a magi checkout, it bootstraps itself by
+cloning `https://github.com/kent8192/magi-system.git` into a temporary
+directory, then delegates to that checkout's installer. Override the bootstrap
+source with `MAGI_BOOTSTRAP_REPO_URL`.
 
 The installer then registers or updates the magi plugins (best effort) with
 whichever agent CLIs are present — `claude` and `codex` — and `./uninstall.sh`
@@ -78,9 +83,11 @@ codex plugin marketplace upgrade magi
 codex plugin add magi@magi
 ```
 
-Set `MAGI_PLUGIN_REPO=kent8192/magi` when you explicitly want to install from
-GitHub instead of the local checkout. After installing into Claude Code, restart
-it and run `/magi-system setup`.
+Set `MAGI_PLUGIN_REPO=kent8192/magi-system` when you explicitly want to install
+plugins from GitHub instead of the local checkout. Standalone bootstrap mode
+uses that GitHub plugin source by default so plugin marketplaces do not point at
+the temporary clone. After installing into Claude Code, restart it and run
+`/magi-system setup`.
 
 ## Quick Start
 

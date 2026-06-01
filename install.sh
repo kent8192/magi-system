@@ -11,6 +11,26 @@ set -euo pipefail
 #   ~/.magi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if [ ! -f "$SCRIPT_DIR/Cargo.toml" ] || [ ! -d "$SCRIPT_DIR/templates" ]; then
+  if ! command -v git >/dev/null 2>&1; then
+    echo "Error: git is required to bootstrap magi from a repository." >&2
+    exit 1
+  fi
+
+  MAGI_BOOTSTRAP_REPO_URL="${MAGI_BOOTSTRAP_REPO_URL:-https://github.com/kent8192/magi-system.git}"
+  BOOTSTRAP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/magi-bootstrap.XXXXXX")"
+  cleanup_bootstrap() {
+    rm -rf "$BOOTSTRAP_DIR"
+  }
+  trap cleanup_bootstrap EXIT
+
+  echo "magi installer bootstrap: cloning $MAGI_BOOTSTRAP_REPO_URL"
+  git clone --depth 1 "$MAGI_BOOTSTRAP_REPO_URL" "$BOOTSTRAP_DIR/magi"
+  MAGI_PLUGIN_REPO="${MAGI_PLUGIN_REPO:-kent8192/magi-system}" "$BOOTSTRAP_DIR/magi/install.sh" "$@"
+  exit $?
+fi
+
 SKILL_DIR="$HOME/.agents/skills/magi"
 SKILL_BIN="$SKILL_DIR/bin/magi"
 LOCAL_CLI="$HOME/.local/bin/magi"

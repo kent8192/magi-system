@@ -168,6 +168,41 @@ fn installer_defaults_plugin_marketplace_to_local_checkout() {
 }
 
 #[test]
+fn installer_bootstraps_from_magi_system_when_not_in_checkout() {
+    let installer = Path::new(env!("CARGO_MANIFEST_DIR")).join("install.sh");
+    let installer = std::fs::read_to_string(installer).expect("read installer");
+
+    assert!(
+        installer.contains(
+            r#"MAGI_BOOTSTRAP_REPO_URL="${MAGI_BOOTSTRAP_REPO_URL:-https://github.com/kent8192/magi-system.git}""#
+        ),
+        "standalone installer should default to the magi-system repository"
+    );
+    assert!(
+        installer.contains(r#"git clone --depth 1 "$MAGI_BOOTSTRAP_REPO_URL""#),
+        "standalone installer should clone the bootstrap repository"
+    );
+    assert!(
+        installer.contains(r#"MAGI_PLUGIN_REPO="${MAGI_PLUGIN_REPO:-kent8192/magi-system}""#),
+        "bootstrap delegation should use a durable GitHub plugin source instead of the temporary checkout"
+    );
+    assert!(
+        installer.contains(r#""$BOOTSTRAP_DIR/magi/install.sh" "$@""#),
+        "bootstrap delegation should preserve installer arguments"
+    );
+}
+
+#[test]
+fn setup_sh_entrypoint_is_removed() {
+    let setup = Path::new(env!("CARGO_MANIFEST_DIR")).join("setup.sh");
+
+    assert!(
+        !setup.exists(),
+        "setup.sh compatibility entrypoint should be removed"
+    );
+}
+
+#[test]
 fn installer_updates_claude_plugin_by_marketplace_selector() {
     let installer = Path::new(env!("CARGO_MANIFEST_DIR")).join("install.sh");
     let installer = std::fs::read_to_string(installer).expect("read installer");
