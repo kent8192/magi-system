@@ -3,7 +3,8 @@
 use std::io::Write;
 
 use magi::codex_bridge::{
-    build_inject_items_request, build_turn_start_request, format_context_line, submit_to_codex,
+    bridge_status_error_message, bridge_status_state_for_error, build_inject_items_request,
+    build_turn_start_request, format_context_line, submit_to_codex,
 };
 use tempfile::NamedTempFile;
 
@@ -61,6 +62,35 @@ fn builds_user_message_fallback_injection_request() {
         request["params"]["items"][0]["content"][0]["text"],
         "alice->bob: status?"
     );
+}
+
+#[test]
+fn proxy_startup_failures_are_reported_as_retrying_bridge_status() {
+    let error = magi::error::MagiError::CommandFailed(
+        "codex app-server proxy closed before JSON-RPC response".to_string(),
+    );
+
+    assert_eq!(bridge_status_state_for_error(&error), "retrying");
+}
+
+#[test]
+fn proxy_startup_status_mentions_default_app_server_socket() {
+    let temp_home = tempfile::tempdir().expect("temp home");
+    let previous_home = std::env::var_os("HOME");
+    std::env::set_var("HOME", temp_home.path());
+    let error = magi::error::MagiError::CommandFailed(
+        "codex app-server proxy closed before JSON-RPC response".to_string(),
+    );
+
+    let message = bridge_status_error_message(&error);
+
+    assert!(message.contains("app-server-control/app-server-control.sock"));
+    assert!(message.contains(temp_home.path().to_str().unwrap()));
+    if let Some(previous_home) = previous_home {
+        std::env::set_var("HOME", previous_home);
+    } else {
+        std::env::remove_var("HOME");
+    }
 }
 
 #[tokio::test]

@@ -7,8 +7,9 @@
 //! bridge falls back to `thread/inject_items` so the message is still persisted
 //! into model-visible thread history.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures_util::StreamExt;
 use serde_json::{json, Value};
@@ -46,17 +47,47 @@ pub async fn run(thread: Option<String>, cwd: Option<PathBuf>, codex: String) ->
     pubsub.subscribe(RedisKeys::new(&team).pubsub()).await?;
     let mut wakeups = pubsub.on_message();
     let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+    let status_path = bridge_status_path(&thread_id);
 
-    deliver_pending(&url, &team, &agent, &thread_id, cwd.as_deref(), &codex).await?;
+    write_bridge_status(status_path.as_deref(), "running", None);
+    deliver_pending_and_record(
+        &url,
+        &team,
+        &agent,
+        &thread_id,
+        cwd.as_deref(),
+        &codex,
+        status_path.as_deref(),
+    )
+    .await;
 
     loop {
         tokio::select! {
-            _ = tokio::signal::ctrl_c() => return Ok(()),
+            _ = tokio::signal::ctrl_c() => {
+                write_bridge_status(status_path.as_deref(), "stopped", None);
+                return Ok(());
+            },
             _ = interval.tick() => {
-                deliver_pending(&url, &team, &agent, &thread_id, cwd.as_deref(), &codex).await?;
+                deliver_pending_and_record(
+                    &url,
+                    &team,
+                    &agent,
+                    &thread_id,
+                    cwd.as_deref(),
+                    &codex,
+                    status_path.as_deref(),
+                ).await;
             }
             Some(_) = wakeups.next() => {
-                deliver_pending(&url, &team, &agent, &thread_id, cwd.as_deref(), &codex).await?;
+                deliver_pending_and_record(
+                    &url,
+                    &team,
+                    &agent,
+                    &thread_id,
+                    cwd.as_deref(),
+                    &codex,
+                    status_path.as_deref(),
+                ).await;
             }
         }
     }
@@ -98,6 +129,105 @@ async fn deliver_pending(
     }
     messaging::advance_inbox_cursor_with_url(url, team, agent, &last_delivered_id).await?;
     Ok(())
+}
+
+async fn deliver_pending_and_record(
+    url: &str,
+    team: &str,
+    agent: &str,
+    thread_id: &str,
+    cwd: Option<&str>,
+    codex: &str,
+    status_path: Option<&Path>,
+) {
+    match deliver_pending(url, team, agent, thread_id, cwd, codex).await {
+        Ok(()) => write_bridge_status(status_path, "running", None),
+        Err(error) => {
+            let state = bridge_status_state_for_error(&error);
+            let status_error = bridge_status_error_message(&error);
+            eprintln!("magi codex bridge delivery failed; will retry: {status_error}");
+            write_bridge_status(status_path, state, Some(&status_error));
+        }
+    }
+}
+
+/// Returns the bridge status state that should be recorded for a delivery error.
+pub fn bridge_status_state_for_error(_error: &MagiError) -> &'static str {
+    "retrying"
+}
+
+/// Formats a delivery error for hook-visible bridge status.
+pub fn bridge_status_error_message(error: &MagiError) -> String {
+    let message = error.to_string();
+    if message.contains("codex app-server proxy closed before JSON-RPC response") {
+        format!(
+            "{message}; check codex app-server control socket at {}",
+            default_codex_app_server_socket().display()
+        )
+    } else {
+        message
+    }
+}
+
+fn default_codex_app_server_socket() -> PathBuf {
+    let codex_home = std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))
+        .unwrap_or_else(|| PathBuf::from(".codex"));
+    codex_home.join("app-server-control/app-server-control.sock")
+}
+
+fn bridge_status_path(thread_id: &str) -> Option<PathBuf> {
+    let state_dir = std::env::var_os("MAGI_CODEX_STATE_DIR")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("XDG_STATE_HOME").map(|home| PathBuf::from(home).join("magi-codex"))
+        })
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state/magi-codex"))
+        })?;
+    Some(
+        state_dir
+            .join("bridges")
+            .join(format!("{}.status", safe_key(thread_id))),
+    )
+}
+
+fn safe_key(value: &str) -> String {
+    value
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+        .collect()
+}
+
+fn write_bridge_status(path: Option<&Path>, state: &str, last_error: Option<&str>) {
+    let Some(path) = path else {
+        return;
+    };
+    let Some(parent) = path.parent() else {
+        return;
+    };
+    if let Err(error) = std::fs::create_dir_all(parent) {
+        eprintln!("magi codex bridge could not create status directory: {error}");
+        return;
+    }
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default();
+    let pid = std::process::id();
+    let last_error = sanitize_status_value(last_error.unwrap_or(""));
+    let content = format!("state={state}\npid={pid}\nupdated_at={now}\nlast_error={last_error}\n");
+    if let Err(error) = std::fs::write(path, content) {
+        eprintln!("magi codex bridge could not write status: {error}");
+    }
+}
+
+fn sanitize_status_value(value: &str) -> String {
+    value
+        .chars()
+        .filter(|c| !matches!(c, '\n' | '\r'))
+        .collect()
 }
 
 /// Formats a magi message as the context line injected into Codex.

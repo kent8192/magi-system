@@ -37,6 +37,7 @@ PROJECT_CWD="$(json_string cwd)"
 
 [ -n "$SESSION_ID" ] || exit 0
 bridge_pid_file="$BRIDGES_DIR/$(safe_key "$SESSION_ID").pid"
+bridge_status_file="$BRIDGES_DIR/$(safe_key "$SESSION_ID").status"
 if [ -f "$bridge_pid_file" ]; then
   bridge_pid="$(cat "$bridge_pid_file" 2>/dev/null || true)"
   if [ -n "$bridge_pid" ]; then
@@ -44,6 +45,7 @@ if [ -f "$bridge_pid_file" ]; then
   fi
   rm -f "$bridge_pid_file" 2>/dev/null || true
 fi
+rm -f "$bridge_status_file" 2>/dev/null || true
 
 session_file="$SESSIONS_DIR/$(safe_key "$SESSION_ID").agent"
 [ -f "$session_file" ] || exit 0
