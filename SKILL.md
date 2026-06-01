@@ -36,14 +36,16 @@ Codex SessionStart hooks also ensure the managed Codex app-server daemon is
 running before launching `magi codex bridge` by default, so incoming Redis
 Pub/Sub messages become Codex app-server turns for the current thread. Prompt
 hooks perform the same daemon check before restarting a missing bridge and
-report whether that bridge is starting, running, retrying, unsupported, stopped,
-or disabled. A `retrying` bridge keeps the last app-server delivery error
-visible until a later message is successfully submitted; empty inbox checks do
-not clear that error. An `unsupported` bridge means the Codex runtime does not
-expose a reachable app-server control socket. Set `MAGI_CODEX_APP_SERVER_SOCKET`
-to a Unix socket path when Codex is running with one; `stdio://` app-server
-processes cannot be reached by the external bridge. Set
-`MAGI_CODEX_APP_SERVER_DAEMON=0` to disable managed daemon autostart.
+report whether that bridge is starting, running, delivering, retrying,
+unsupported, stopped, or disabled. The bridge connects to the Codex app-server
+over the Unix control socket's WebSocket transport. A `retrying` bridge keeps
+the last app-server delivery error visible until a later message is
+successfully submitted; empty inbox checks do not clear that error. An
+`unsupported` bridge means the Codex runtime does not expose a reachable
+app-server control socket. Set `MAGI_CODEX_APP_SERVER_SOCKET` to a Unix socket
+path when Codex is running with one; `stdio://` app-server processes cannot be
+reached by the external bridge. Set `MAGI_CODEX_APP_SERVER_DAEMON=0` to disable
+managed daemon autostart.
 
 ## Storage
 

@@ -10,7 +10,8 @@ When Codex hook output provides a `magi-system context` line, prefer its
 first.
 Codex hooks ensure the managed app-server daemon is running before starting or
 restarting the live `magi codex bridge`, unless disabled with
-`MAGI_CODEX_APP_SERVER_DAEMON=0`.
+`MAGI_CODEX_APP_SERVER_DAEMON=0`. The bridge uses the Codex Unix control
+socket's WebSocket transport.
 
 Recommended default action (non-interactive):
 
