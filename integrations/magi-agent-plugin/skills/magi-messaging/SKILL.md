@@ -38,6 +38,7 @@ magi history [--team <t>] [--agent <a>] # full durable log (non-destructive)
 magi team members [--team <t>]          # list members
 magi team list                          # list teams
 magi watch --format line                # stream incoming messages live (Ctrl-C to stop)
+magi watch --once --format context      # wait for one delivery, then exit
 ```
 
 ## Important behaviors
@@ -52,6 +53,10 @@ magi watch --format line                # stream incoming messages live (Ctrl-C 
 - In a runtime session, `send`, `inbox`, `history`, and `watch` use the session
   record keyed by the runtime session id. There is no persistent active-agent
   fallback. Use `magi agent name` when you need to report this session's name.
+- In Claude Code, the SessionStart hook may ask you to launch a Monitor command
+  that runs `magi watch --once --format context`. When that Monitor finishes,
+  treat each line as injected context (`<sender>-><recipient>: message`), act on
+  it, then launch the same Monitor command again.
 
 ## Onboarding another agent
 

@@ -38,6 +38,7 @@ magi history [--team <t>] [--agent <a>] # full durable log (non-destructive)
 magi team members [--team <t>]          # list members
 magi team list                          # list teams
 magi watch --format line                # stream incoming messages live (Ctrl-C to stop)
+magi watch --once --format context      # wait for one delivery, then exit
 ```
 
 ## Important behaviors

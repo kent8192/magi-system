@@ -20,7 +20,7 @@ use magi::cli::WatchFormat;
 use magi::messaging::send_message_with_url;
 use magi::repl::{parse_repl_command, ReplCommand};
 use magi::team::{create_team_with_url, register_agent_with_url};
-use magi::watch::{format_watch_message, watch_once_with_url};
+use magi::watch::{format_watch_message, wait_once_with_url, watch_once_with_url};
 
 mod common;
 use common::{redis_fixture, RedisFixture};
@@ -135,6 +135,25 @@ fn watch_formats_json_messages_with_escaping() {
     assert_eq!(decoded["body"], "quote \" and newline\n");
 }
 
+/// `WatchFormat::Context` should emit the exact compact form injected into an agent turn.
+#[test]
+fn watch_formats_context_messages() {
+    let message = magi::messaging::MessageRecord {
+        id: "1-0".to_string(),
+        event: magi::model::MessageEvent {
+            from: "alice".to_string(),
+            to: "bob".to_string(),
+            body: "deploy is done".to_string(),
+            created_at: "123".to_string(),
+        },
+    };
+
+    assert_eq!(
+        format_watch_message(&message, WatchFormat::Context).unwrap(),
+        "alice->bob: deploy is done"
+    );
+}
+
 /// Verifies the at-most-once read semantics of `watch_once_with_url`.
 ///
 /// A message sent by `alice` to `bob` appears exactly once in the first `watch_once` call;
@@ -175,4 +194,42 @@ async fn watch_once_returns_new_messages_and_marks_them_read(
     assert_eq!(first.len(), 1);
     assert!(first[0].contains("watch me"));
     assert!(second.is_empty());
+}
+
+/// Verifies that wait-once blocks on Pub/Sub and exits after the first delivery.
+#[rstest]
+#[tokio::test]
+async fn wait_once_returns_after_first_delivery(#[future(awt)] redis_fixture: RedisFixture) {
+    let url = redis_fixture.url().to_string();
+    let team = unique_name("team-wait-once");
+    let alice = unique_name("alice");
+    let bob = unique_name("bob");
+
+    create_team_with_url(&url, &team, &alice).await.unwrap();
+    register_agent_with_url(&url, &team, &bob, "claude-code", "/tmp/bob")
+        .await
+        .unwrap();
+
+    let waiter_url = url.clone();
+    let waiter_team = team.clone();
+    let waiter_bob = bob.clone();
+    let waiter = tokio::spawn(async move {
+        wait_once_with_url(&waiter_url, &waiter_team, &waiter_bob, WatchFormat::Context).await
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    send_message_with_url(&url, &team, &alice, &bob, "wake up")
+        .await
+        .unwrap();
+
+    tokio::time::timeout(std::time::Duration::from_secs(5), waiter)
+        .await
+        .expect("wait-once should exit after delivery")
+        .expect("wait-once task should not panic")
+        .expect("wait-once should succeed");
+
+    let unread = watch_once_with_url(&url, &team, &bob, WatchFormat::Context)
+        .await
+        .unwrap();
+    assert!(unread.is_empty());
 }

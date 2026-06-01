@@ -22,6 +22,7 @@ Use the Rust CLI. Do not read or edit `~/.magi` files directly.
 ~/.agents/skills/magi/bin/magi inbox
 ~/.agents/skills/magi/bin/magi history [--team <team>] [--agent <agent>]
 ~/.agents/skills/magi/bin/magi watch --format line
+~/.agents/skills/magi/bin/magi watch --once --format context
 ~/.agents/skills/magi/bin/magi codex bridge --thread <thread-id>
 ```
 

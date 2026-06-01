@@ -12,7 +12,7 @@
 //! - `send` (multi-word message tail, missing-message rejection).
 //! - `join` (with `--invite`, missing-invite rejection).
 //! - `history` (with and without optional `--team`/`--agent` filters).
-//! - `inbox`, `watch` (line/json format, invalid-format rejection).
+//! - `inbox`, `watch` (line/json/context format, `--once`, invalid-format rejection).
 //! - `config get`/`config set`.
 //! - `install`, `ssh start`/`status`/`stop`.
 
@@ -283,26 +283,40 @@ fn parses_inbox() {
 #[test]
 fn parses_watch_default_line_format() {
     let cli = Cli::try_parse_from(["magi", "watch"]).expect("parse");
-    let Some(Command::Watch { format }) = cli.command else {
+    let Some(Command::Watch { format, once }) = cli.command else {
         panic!("expected watch");
     };
 
     assert_eq!(format, WatchFormat::Line);
+    assert!(!once);
 }
 
 #[test]
 fn parses_watch_json_format() {
     let cli = Cli::try_parse_from(["magi", "watch", "--format", "json"]).expect("parse");
-    let Some(Command::Watch { format }) = cli.command else {
+    let Some(Command::Watch { format, once }) = cli.command else {
         panic!("expected watch");
     };
 
     assert_eq!(format, WatchFormat::Json);
+    assert!(!once);
+}
+
+#[test]
+fn parses_watch_context_format_once() {
+    let cli =
+        Cli::try_parse_from(["magi", "watch", "--format", "context", "--once"]).expect("parse");
+    let Some(Command::Watch { format, once }) = cli.command else {
+        panic!("expected watch");
+    };
+
+    assert_eq!(format, WatchFormat::Context);
+    assert!(once);
 }
 
 #[test]
 fn rejects_invalid_watch_format() {
-    // Only `line` and `json` are accepted by `WatchFormat`; any other value must fail.
+    // Only documented formats are accepted by `WatchFormat`; any other value must fail.
     let error = Cli::try_parse_from(["magi", "watch", "--format", "xml"]);
     assert!(error.is_err());
 }
