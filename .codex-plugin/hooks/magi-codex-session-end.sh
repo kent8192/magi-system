@@ -46,6 +46,7 @@ if [ -n "$name" ] && [ -n "$team" ]; then
 fi
 
 rm -f "$session_file" 2>/dev/null || true
+rm -f "${session_file%.agent}.health" 2>/dev/null || true
 if [ -n "$PROJECT_CWD" ] && [ -n "$name" ]; then
   current_file="$CURRENT_DIR/$(safe_key "$PROJECT_CWD").agent"
   current_name="$(sed -n '1p' "$current_file" 2>/dev/null || true)"

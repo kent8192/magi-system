@@ -92,6 +92,11 @@ This is on by default; disable it with `MAGI_AGENT_EPHEMERAL=0`. Spawning is
 idempotent per session (a re-fired SessionStart does not create duplicates), and
 both hooks are best-effort — they never block session start or end.
 
+The start hook also tracks Redis health for recorded ephemeral agents without
+sleeping in the hook. Three due consecutive failures use a 1s, 2s, then 4s
+backoff and mark the session for cleanup; once Redis is reachable again, the hook
+despawns the stale agent and clears the session record.
+
 Messaging commands use the session record for their agent identity, so
 concurrent sessions in one `$HOME` can send, read, and watch as their own
 spawned MAGI agent names. There is no persistent active-agent fallback.
