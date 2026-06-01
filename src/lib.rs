@@ -23,7 +23,7 @@
 //! | `session_identity` | Runtime session-record identity resolution for concurrent agent sessions |
 //! | `ssh` | SSH helpers for tunnelling connections to remote Redis instances |
 //! | `team` | Team membership management: join, leave, list members |
-//! | `watch` | Watch mode: continuous message tailing with line or JSON output |
+//! | `watch` | Watch mode: continuous or one-shot message tailing with line, JSON, or context output |
 
 /// Ephemeral session-scoped agent lifecycle: deterministic MAGI codenames,
 /// spawn (register) and despawn (remove) for short-lived session agents.
@@ -82,6 +82,6 @@ pub mod ssh;
 /// and enumerate current membership.
 pub mod team;
 
-/// Watch mode: tail a message stream continuously and emit each
-/// message as a plain line or as structured JSON output.
+/// Watch mode: tail a message stream continuously or once and emit each
+/// message as a plain line, structured JSON, or agent-context output.
 pub mod watch;

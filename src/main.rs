@@ -92,8 +92,8 @@ async fn main() -> Result<()> {
         Some(Command::History { team, agent }) => magi::messaging::history(team, agent).await,
 
         // Subscribe to the Pub/Sub channel and stream new messages to stdout
-        // in either line or JSON format (controlled by `format`).
-        Some(Command::Watch { format }) => magi::watch::run(format).await,
+        // in line, JSON, or context format. `--once` exits after delivery.
+        Some(Command::Watch { format, once }) => magi::watch::run(format, once).await,
 
         // --- SSH helper lifecycle ---
         Some(Command::Ssh { command }) => match command {

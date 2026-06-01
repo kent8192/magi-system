@@ -3,7 +3,8 @@
 //! This module implements the `magi watch` command, which keeps a long-running
 //! connection to Redis and prints every new message addressed to the active agent
 //! as it arrives.  Output can be formatted either as a compact human-readable
-//! line (`WatchFormat::Line`) or as machine-parseable NDJSON (`WatchFormat::Json`).
+//! line (`WatchFormat::Line`), as machine-parseable NDJSON (`WatchFormat::Json`),
+//! or as an agent-context line (`WatchFormat::Context`).
 //!
 //! ## How it works
 //!
@@ -38,7 +39,7 @@ use crate::session_identity::{missing_session_agent_message, resolve_identity};
 /// Returns `MagiError::InvalidConfig` if `redis.url`, the resolved active team,
 /// or the resolved session agent are absent. Propagates any Redis connectivity
 /// errors returned by the event loop.
-pub async fn run(format: WatchFormat) -> Result<()> {
+pub async fn run(format: WatchFormat, once: bool) -> Result<()> {
     let config = AppConfig::load()?;
     let url = config
         .redis
@@ -53,7 +54,11 @@ pub async fn run(format: WatchFormat) -> Result<()> {
         .agent
         .ok_or_else(|| MagiError::InvalidConfig(missing_session_agent_message()))?;
 
-    watch_loop_with_url(&url, &team, &agent, format).await
+    if once {
+        wait_once_with_url(&url, &team, &agent, format).await
+    } else {
+        watch_loop_with_url(&url, &team, &agent, format).await
+    }
 }
 
 /// Reads and formats all currently unread messages for the agent in one shot.
@@ -93,9 +98,11 @@ pub async fn watch_once_with_url(
 /// Serializes a single `MessageRecord` into the requested output format.
 ///
 /// - `WatchFormat::Line` — Delegates to `messaging::format_message_line` which
-///   produces a compact, human-readable one-liner (e.g. `[id] from → to: body`).
+///   produces a compact, human-readable one-liner (e.g. `[id] from -> to: body`).
 /// - `WatchFormat::Json` — Produces a flat JSON object with the keys `id`,
 ///   `from`, `to`, `body`, and `created_at`, suitable for NDJSON piping.
+/// - `WatchFormat::Context` — Produces `<from>-><to>: <body>` for direct
+///   injection into an agent context.
 ///
 /// # Errors
 ///
@@ -113,6 +120,49 @@ pub fn format_watch_message(message: &MessageRecord, format: WatchFormat) -> Res
             "created_at": message.event.created_at,
         })
         .to_string()),
+        WatchFormat::Context => Ok(format!(
+            "{}->{}: {}",
+            message.event.from, message.event.to, message.event.body
+        )),
+    }
+}
+
+/// Waits until at least one unread message is delivered, prints it, and exits.
+///
+/// This is intended for agent runtimes that expose a background-job/Monitor
+/// primitive. The process remains blocked with a Redis Pub/Sub subscription,
+/// exits as soon as one non-empty inbox batch has been printed, and relies on
+/// the caller to launch a fresh watcher after handling the delivered context.
+pub async fn wait_once_with_url(
+    url: &str,
+    team: &str,
+    agent: &str,
+    format: WatchFormat,
+) -> Result<()> {
+    if print_new_messages(url, team, agent, format).await? > 0 {
+        return Ok(());
+    }
+
+    let client = redis::Client::open(url)?;
+    let mut pubsub = client.get_async_pubsub().await?;
+    pubsub.subscribe(RedisKeys::new(team).pubsub()).await?;
+    let mut wakeups = pubsub.on_message();
+    let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+
+    loop {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => return Ok(()),
+            _ = interval.tick() => {
+                if print_new_messages(url, team, agent, format).await? > 0 {
+                    return Ok(());
+                }
+            }
+            Some(_) = wakeups.next() => {
+                if print_new_messages(url, team, agent, format).await? > 0 {
+                    return Ok(());
+                }
+            }
+        }
     }
 }
 
@@ -176,9 +226,16 @@ async fn watch_loop_with_url(
 /// # Errors
 ///
 /// Propagates errors from `watch_once_with_url`.
-async fn print_new_messages(url: &str, team: &str, agent: &str, format: WatchFormat) -> Result<()> {
-    for line in watch_once_with_url(url, team, agent, format).await? {
+async fn print_new_messages(
+    url: &str,
+    team: &str,
+    agent: &str,
+    format: WatchFormat,
+) -> Result<usize> {
+    let lines = watch_once_with_url(url, team, agent, format).await?;
+    let count = lines.len();
+    for line in lines {
         println!("{line}");
     }
-    Ok(())
+    Ok(count)
 }

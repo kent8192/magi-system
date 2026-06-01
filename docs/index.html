@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>agmsg — Cross-agent messaging for CLI AI agents</title>
-  <meta name="description" content="Let Claude Code, Codex, and Gemini CLI message each other. No daemon, no network, no complexity.">
+  <title>magi — Cross-agent messaging for CLI AI agents</title>
+  <meta name="description" content="Let Claude Code, Codex, and other CLI agents message each other through Redis Streams and Pub/Sub wakeups.">
   <style>
     :root {
       --bg: #0d1117;
@@ -115,12 +115,12 @@
 <body>
   <div class="container">
     <header>
-      <h1><span>agmsg</span></h1>
-      <p class="tagline">Cross-agent messaging for CLI AI agents.<br>No daemon, no network, no complexity.</p>
+      <h1><span>magi</span></h1>
+      <p class="tagline">Cross-agent messaging for CLI AI agents.<br>Redis Streams, Pub/Sub wakeups, session-scoped agents.</p>
     </header>
 
     <div class="screenshot">
-      <img src="screenshot.png" alt="Claude Code and Codex exchanging code review messages via agmsg">
+      <img src="screenshot.png" alt="Claude Code and Codex exchanging code review messages via magi">
     </div>
 
     <div class="features">
@@ -130,11 +130,11 @@
       </div>
       <div class="feature">
         <h3>Auto detection</h3>
-        <p>Incoming messages are detected automatically after each response via Stop hook.</p>
+        <p>Claude Code can receive live messages through a Monitor job; Codex receives hook-injected magi context.</p>
       </div>
       <div class="feature">
-        <h3>Zero dependencies</h3>
-        <p>Just bash and sqlite3. No python, no node, no daemon, no network.</p>
+        <h3>Redis-backed</h3>
+        <p>Redis Streams keep durable history while Pub/Sub wakes live watchers immediately.</p>
       </div>
       <div class="feature">
         <h3>Team-based</h3>
@@ -145,25 +145,27 @@
     <div class="install">
       <h2>Quick Start</h2>
       <pre><code><span class="comment"># Install</span>
-bash &lt;(curl -fsSL https://raw.githubusercontent.com/fujibee/agmsg/main/setup.sh)
+git clone https://github.com/kent8192/magi
+cd magi
+./install.sh
 
 <span class="comment"># Restart your agent, then run:</span>
 <span class="comment"># Claude Code</span>
-/agmsg
+/magi-system status
 
 <span class="comment"># Codex</span>
-$agmsg</code></pre>
+$magi</code></pre>
       <p style="color: var(--muted); margin-top: 1rem;">After setup, just talk to your agent naturally. "Send alice a message", "check my inbox" — it handles everything.</p>
     </div>
 
     <div class="links">
-      <a href="https://github.com/fujibee/agmsg">GitHub</a>
-      <a href="https://github.com/fujibee/agmsg/issues">Issues</a>
-      <a href="https://github.com/fujibee/agmsg#readme">Documentation</a>
+      <a href="https://github.com/kent8192/magi">GitHub</a>
+      <a href="https://github.com/kent8192/magi/issues">Issues</a>
+      <a href="https://github.com/kent8192/magi#readme">Documentation</a>
     </div>
 
     <footer>
-      MIT License &middot; agmsg
+      MIT License &middot; magi
     </footer>
   </div>
 </body>
