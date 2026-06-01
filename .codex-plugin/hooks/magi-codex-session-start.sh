@@ -7,6 +7,8 @@
 # concise SessionStart context line.
 # Disable the lifecycle with MAGI_CODEX_EPHEMERAL=0.
 # Disable app-server live injection with MAGI_CODEX_APP_SERVER_BRIDGE=0.
+# Disable managed Codex app-server daemon autostart with
+# MAGI_CODEX_APP_SERVER_DAEMON=0.
 set -uo pipefail
 
 HOOK_INPUT="$(cat 2>/dev/null || true)"
@@ -124,6 +126,29 @@ if [ -n "${MAGI_CODEX_APP_SERVER_SOCKET:-}" ]; then
   bridge_socket_args=(--socket "$MAGI_CODEX_APP_SERVER_SOCKET")
 fi
 
+daemon_auto_on() {
+  case "$(printf '%s' "${MAGI_CODEX_APP_SERVER_DAEMON:-1}" | tr '[:upper:]' '[:lower:]')" in
+    0 | false | no | off) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+codex_daemon_running() {
+  local codex_cli="${MAGI_CODEX_CLI:-codex}"
+  command -v "$codex_cli" >/dev/null 2>&1 || return 1
+  "$codex_cli" app-server daemon version 2>/dev/null |
+    grep -q '"status"[[:space:]]*:[[:space:]]*"running"'
+}
+
+ensure_codex_daemon() {
+  [ -z "${MAGI_CODEX_APP_SERVER_SOCKET:-}" ] || return 0
+  daemon_auto_on || return 0
+  codex_daemon_running && return 0
+  local codex_cli="${MAGI_CODEX_CLI:-codex}"
+  command -v "$codex_cli" >/dev/null 2>&1 || return 0
+  "$codex_cli" app-server daemon start >/dev/null 2>&1 || true
+}
+
 status_field() {
   local file="$1" key="$2"
   [ -f "$file" ] || return 0
@@ -141,6 +166,7 @@ if bridge_on && [ "$redis_state" = "reachable" ] && [ -n "$agent" ] && [ -n "$te
     [ -n "$bridge_state" ] || bridge_state="running"
   else
     rm -f "$bridge_pid_file" 2>/dev/null || true
+    ensure_codex_daemon
     mkdir -p "$BRIDGES_DIR" 2>/dev/null || true
     MAGI_SESSION_ID="$SESSION_ID" CODEX_THREAD_ID="$SESSION_ID" CODEX_SESSION_ID="$SESSION_ID" \
       MAGI_CODEX_STATE_DIR="$STATE_DIR" \

@@ -132,25 +132,28 @@ three due consecutive failures the sidecar marks cleanup pending; the next hook
 run that can reach Redis removes the agent through `magi agent despawn` and
 clears the session record.
 
-For live Codex delivery, SessionStart launches `magi codex bridge --thread
-<session-id>` as a session-scoped background process and SessionEnd stops it.
-The bridge subscribes to the team Pub/Sub channel, drains unread inbox messages
-for the session agent, formats each delivery as `<sender>-><recipient>: message`,
-and sends it to `codex app-server proxy --sock <path>`. The normal path starts
-a new Codex turn with `turn/start` so the agent acts immediately; if the
-app-server rejects that because the thread is already busy, the bridge persists
-the message with `thread/inject_items` as a fallback.
+For live Codex delivery, SessionStart first ensures the managed Codex app-server
+daemon is running, then launches `magi codex bridge --thread <session-id>` as a
+session-scoped background process, and SessionEnd stops it. Prompt hooks perform
+the same daemon check before restarting a missing bridge. The bridge subscribes
+to the team Pub/Sub channel, drains unread inbox messages for the session agent,
+formats each delivery as `<sender>-><recipient>: message`, and sends it to
+`codex app-server proxy --sock <path>`. The normal path starts a new Codex turn
+with `turn/start` so the agent acts immediately; if the app-server rejects that
+because the thread is already busy, the bridge persists the message with
+`thread/inject_items` as a fallback.
 `MAGI_CODEX_APP_SERVER_BRIDGE=0` disables this background bridge,
 `MAGI_CODEX_CLI` overrides the Codex executable, and
-`MAGI_CODEX_APP_SERVER_SOCKET` overrides the Unix control socket path. The
-bridge records a status sidecar under the Codex hook state directory so prompt
-hooks can distinguish `starting`, `running`, `retrying`, `unsupported`,
-`stopped`, and `disabled`. `running` means the bridge process is alive and has
-no known delivery failure, or that a previous failure has been cleared by a
-successful delivery. If the Codex app-server control socket is missing, the
-status becomes `unsupported` and the inbox cursor is not advanced; `stdio://`
-app-server processes cannot be reached by this external bridge. Other delivery
-failures remain `retrying` with the last error until a later delivery succeeds.
+`MAGI_CODEX_APP_SERVER_SOCKET` overrides the Unix control socket path.
+`MAGI_CODEX_APP_SERVER_DAEMON=0` disables managed daemon autostart. The bridge
+records a status sidecar under the Codex hook state directory so prompt hooks
+can distinguish `starting`, `running`, `retrying`, `unsupported`, `stopped`, and
+`disabled`. `running` means the bridge process is alive and has no known
+delivery failure, or that a previous failure has been cleared by a successful
+delivery. If the Codex app-server control socket is missing, the status becomes
+`unsupported` and the inbox cursor is not advanced; `stdio://` app-server
+processes cannot be reached by this external bridge. Other delivery failures
+remain `retrying` with the last error until a later delivery succeeds.
 Delivery failures are retried without acknowledging the failed message: when a
 batch partially succeeds, the cursor advances only through the successfully
 submitted messages.

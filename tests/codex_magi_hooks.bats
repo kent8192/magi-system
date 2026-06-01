@@ -14,6 +14,29 @@ setup() {
   : >"$CALLS"
   REDIS_STATUS_FILE="$TEST_HOME/redis.status"
   printf 'up\n' >"$REDIS_STATUS_FILE"
+  CODEX_STATUS_FILE="$TEST_HOME/codex-daemon.status"
+  printf 'running\n' >"$CODEX_STATUS_FILE"
+
+  mkdir -p "$TEST_HOME/bin"
+  FAKE_CODEX="$TEST_HOME/bin/codex"
+  cat >"$FAKE_CODEX" <<EOF
+#!/usr/bin/env bash
+if [ "\$1 \$2 \$3" = "app-server daemon version" ]; then
+  status="\$(cat "$CODEX_STATUS_FILE" 2>/dev/null || printf stopped)"
+  printf '{"status":"%s"}\n' "\$status"
+  [ "\$status" = "error" ] && exit 1
+  exit 0
+fi
+if [ "\$1 \$2 \$3" = "app-server daemon start" ]; then
+  echo "codex-daemon-start \$*" >>"$CALLS"
+  printf 'running\n' >"$CODEX_STATUS_FILE"
+  printf '{"status":"started"}\n'
+  exit 0
+fi
+exit 0
+EOF
+  chmod +x "$FAKE_CODEX"
+  export PATH="$TEST_HOME/bin:$PATH"
 
   FAKE_MAGI="$TEST_HOME/magi"
   cat >"$FAKE_MAGI" <<EOF
@@ -83,6 +106,24 @@ teardown() {
   grep -q "bridge codex bridge --thread codex-bridge --cwd /tmp/project --codex codex" "$CALLS"
   local pid_file="$MAGI_CODEX_STATE_DIR/bridges/codex-bridge.pid"
   [ -f "$pid_file" ]
+}
+
+@test "Codex SessionStart starts managed app-server daemon before bridge when stopped" {
+  printf 'stopped\n' >"$CODEX_STATUS_FILE"
+
+  run bash "$HOOKS/magi-codex-session-start.sh" <<<'{"session_id":"codex-daemon","cwd":"/tmp/project","hook_event_name":"SessionStart"}'
+  [ "$status" -eq 0 ]
+
+  for _ in 1 2 3 4 5; do
+    grep -q "bridge codex bridge --thread codex-daemon --cwd /tmp/project --codex codex" "$CALLS" && break
+    sleep 0.1
+  done
+  grep -q '^codex-daemon-start app-server daemon start$' "$CALLS"
+  grep -q "bridge codex bridge --thread codex-daemon --cwd /tmp/project --codex codex" "$CALLS"
+  local daemon_line bridge_line
+  daemon_line="$(grep -n '^codex-daemon-start app-server daemon start$' "$CALLS" | head -1 | cut -d: -f1)"
+  bridge_line="$(grep -n 'bridge codex bridge --thread codex-daemon --cwd /tmp/project --codex codex' "$CALLS" | head -1 | cut -d: -f1)"
+  [ "$daemon_line" -lt "$bridge_line" ]
 }
 
 @test "Codex SessionStart passes explicit app-server socket to bridge" {
@@ -215,6 +256,22 @@ EOF
   grep -q "bridge codex bridge --thread thread-stale --cwd /tmp/project --codex codex" "$CALLS"
   [ -f "$MAGI_CODEX_STATE_DIR/bridges/thread-stale.pid" ]
   [ "$(cat "$MAGI_CODEX_STATE_DIR/bridges/thread-stale.pid")" != "999999" ]
+}
+
+@test "Codex UserPromptSubmit starts managed app-server daemon before restarting bridge" {
+  mkdir -p "$MAGI_CODEX_STATE_DIR/sessions"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_CODEX_STATE_DIR/sessions/thread-daemon-prompt.agent"
+  printf 'stopped\n' >"$CODEX_STATUS_FILE"
+
+  CODEX_THREAD_ID=thread-daemon-prompt run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
+  [ "$status" -eq 0 ]
+
+  for _ in 1 2 3 4 5; do
+    grep -q "bridge codex bridge --thread thread-daemon-prompt --cwd /tmp/project --codex codex" "$CALLS" && break
+    sleep 0.1
+  done
+  grep -q '^codex-daemon-start app-server daemon start$' "$CALLS"
+  grep -q "bridge codex bridge --thread thread-daemon-prompt --cwd /tmp/project --codex codex" "$CALLS"
 }
 
 @test "Codex UserPromptSubmit spawns when SessionStart did not record this session" {
