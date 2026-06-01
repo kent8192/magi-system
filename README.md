@@ -19,20 +19,27 @@ Pub/Sub is used as a low-latency wakeup for `watch`.
 ## Install
 
 ```bash
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/kent8192/magi-system/main/install.sh | bash
 ```
 
-When run inside a checkout, the installer builds the Rust binary and places it at:
+The standalone installer only needs a shell, `git`, and the Rust toolchain. It
+clones `https://github.com/kent8192/magi-system.git` into a temporary directory,
+builds magi from that checkout, and places the binary at:
 
 - `~/.agents/skills/magi/bin/magi`
 - `~/.local/bin/magi`
 
 Configuration and managed Redis state are stored under `~/.magi`.
 
-When `install.sh` is run outside a magi checkout, it bootstraps itself by
-cloning `https://github.com/kent8192/magi-system.git` into a temporary
-directory, then delegates to that checkout's installer. Override the bootstrap
-source with `MAGI_BOOTSTRAP_REPO_URL`.
+Override the bootstrap source with `MAGI_BOOTSTRAP_REPO_URL`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kent8192/magi-system/main/install.sh \
+  | MAGI_BOOTSTRAP_REPO_URL=https://github.com/kent8192/magi-system.git bash
+```
+
+From a local checkout, run `./install.sh` directly to install the code and
+plugin manifests from that checkout instead of bootstrapping a temporary clone.
 
 The installer then registers or updates the magi plugins (best effort) with
 whichever agent CLIs are present — `claude` and `codex` — and `./uninstall.sh`
@@ -66,8 +73,8 @@ The repository ships two plugins under the `magi` marketplace:
   context`; Redis wakeups surface as `<sender>-><recipient>: message`, and the
   session relaunches the Monitor after acting on the message.
 
-`./install.sh` installs or updates both by registering the current checkout as
-the marketplace:
+For checkout-based development installs, `./install.sh` installs or updates both
+by registering the current checkout as the marketplace:
 
 ```bash
 # Claude Code
