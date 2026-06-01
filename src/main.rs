@@ -99,9 +99,12 @@ async fn main() -> Result<()> {
 
         // --- Codex runtime integrations ---
         Some(Command::Codex { command }) => match command {
-            CodexCommand::Bridge { thread, cwd, codex } => {
-                magi::codex_bridge::run(thread, cwd, codex).await
-            }
+            CodexCommand::Bridge {
+                thread,
+                cwd,
+                codex,
+                socket,
+            } => magi::codex_bridge::run(thread, cwd, codex, socket).await,
         },
 
         // --- SSH helper lifecycle ---

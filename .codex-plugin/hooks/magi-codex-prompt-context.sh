@@ -166,11 +166,15 @@ bridge_running() {
 
 start_bridge() {
   local pid_file="$1" log_file="$2" status_file="$3"
+  local bridge_socket_args=()
+  if [ -n "${MAGI_CODEX_APP_SERVER_SOCKET:-}" ]; then
+    bridge_socket_args=(--socket "$MAGI_CODEX_APP_SERVER_SOCKET")
+  fi
   mkdir -p "$BRIDGES_DIR" 2>/dev/null || true
   MAGI_SESSION_ID="$SESSION_ID" CODEX_THREAD_ID="$SESSION_ID" CODEX_SESSION_ID="$SESSION_ID" \
     MAGI_CODEX_STATE_DIR="$STATE_DIR" \
     "$MAGI" codex bridge --thread "$SESSION_ID" --cwd "$PROJECT_CWD" \
-    --codex "${MAGI_CODEX_CLI:-codex}" \
+    --codex "${MAGI_CODEX_CLI:-codex}" "${bridge_socket_args[@]}" \
     >>"$log_file" 2>&1 &
   local bridge_pid="$!"
   printf '%s\n' "$bridge_pid" >"$pid_file" 2>/dev/null || true

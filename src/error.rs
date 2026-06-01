@@ -60,6 +60,12 @@ pub enum MagiError {
     #[error("not found: {0}")]
     NotFound(String),
 
+    /// The current runtime cannot support a requested integration mode.  This
+    /// is used for detected, actionable incompatibilities rather than transient
+    /// command failures.
+    #[error("unsupported runtime: {0}")]
+    UnsupportedRuntime(String),
+
     /// An external process or subcommand (e.g., an SSH helper or an installer
     /// step) exited with a non-zero status or produced unexpected output.  The
     /// inner `String` carries the failure description.

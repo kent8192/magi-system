@@ -50,7 +50,8 @@ The repository ships two plugins under the `magi` marketplace:
   launch `magi codex bridge` for the current Codex thread so Redis Pub/Sub
   wakeups become live Codex app-server turns, and they report the bridge state
   on each prompt. App-server delivery failures keep the bridge in `retrying`
-  until a later delivery succeeds.
+  until a later delivery succeeds; Codex runtimes without a reachable app-server
+  control socket are reported as `unsupported`.
 - **`magi-agent` (Claude Code)** — the event-driven bridge under
   `integrations/magi-agent-plugin/` that turns incoming magi messages into a
   live Claude session. When that bridge is stopped, the SessionStart hook tells
@@ -120,7 +121,7 @@ magi send <agent> <message>
 magi inbox
 magi history [--team <team>] [--agent <agent>]
 magi watch [--format line|json|context] [--once]
-magi codex bridge [--thread <thread-id>] [--cwd <dir>] [--codex <codex-cli>]
+magi codex bridge [--thread <thread-id>] [--cwd <dir>] [--codex <codex-cli>] [--socket <sock>]
 magi ssh start|status|stop
 magi config get <key>
 magi config set <key> <value>

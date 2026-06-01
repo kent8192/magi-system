@@ -325,7 +325,13 @@ fn rejects_invalid_watch_format() {
 fn parses_codex_bridge_defaults() {
     let cli = Cli::try_parse_from(["magi", "codex", "bridge"]).expect("parse");
     let Some(Command::Codex {
-        command: CodexCommand::Bridge { thread, cwd, codex },
+        command:
+            CodexCommand::Bridge {
+                thread,
+                cwd,
+                codex,
+                socket,
+            },
     }) = cli.command
     else {
         panic!("expected codex bridge");
@@ -334,6 +340,7 @@ fn parses_codex_bridge_defaults() {
     assert_eq!(thread, None);
     assert_eq!(cwd, None);
     assert_eq!(codex, "codex");
+    assert_eq!(socket, None);
 }
 
 #[test]
@@ -348,10 +355,18 @@ fn parses_codex_bridge_overrides() {
         "/tmp/project",
         "--codex",
         "/tmp/codex",
+        "--socket",
+        "/tmp/codex.sock",
     ])
     .expect("parse");
     let Some(Command::Codex {
-        command: CodexCommand::Bridge { thread, cwd, codex },
+        command:
+            CodexCommand::Bridge {
+                thread,
+                cwd,
+                codex,
+                socket,
+            },
     }) = cli.command
     else {
         panic!("expected codex bridge");
@@ -360,6 +375,10 @@ fn parses_codex_bridge_overrides() {
     assert_eq!(thread.as_deref(), Some("thread-123"));
     assert_eq!(cwd.as_deref(), Some(std::path::Path::new("/tmp/project")));
     assert_eq!(codex, "/tmp/codex");
+    assert_eq!(
+        socket.as_deref(),
+        Some(std::path::Path::new("/tmp/codex.sock"))
+    );
 }
 
 #[test]

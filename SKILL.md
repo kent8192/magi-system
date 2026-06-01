@@ -23,7 +23,7 @@ Use the Rust CLI. Do not read or edit `~/.magi` files directly.
 ~/.agents/skills/magi/bin/magi history [--team <team>] [--agent <agent>]
 ~/.agents/skills/magi/bin/magi watch --format line
 ~/.agents/skills/magi/bin/magi watch --once --format context
-~/.agents/skills/magi/bin/magi codex bridge --thread <thread-id>
+~/.agents/skills/magi/bin/magi codex bridge --thread <thread-id> [--socket <sock>]
 ```
 
 The same binary is installed at `~/.local/bin/magi`.
@@ -34,10 +34,13 @@ despawn the stale agent after Redis becomes reachable again.
 
 Codex SessionStart hooks also launch `magi codex bridge` by default so incoming
 Redis Pub/Sub messages become Codex app-server turns for the current thread.
-Prompt hooks report whether that bridge is starting, running, retrying, stopped,
-or disabled. A `retrying` bridge keeps the last app-server delivery error visible
-until a later message is successfully submitted; empty inbox checks do not clear
-that error.
+Prompt hooks report whether that bridge is starting, running, retrying,
+unsupported, stopped, or disabled. A `retrying` bridge keeps the last app-server
+delivery error visible until a later message is successfully submitted; empty
+inbox checks do not clear that error. An `unsupported` bridge means the Codex
+runtime does not expose a reachable app-server control socket. Set
+`MAGI_CODEX_APP_SERVER_SOCKET` to a Unix socket path when Codex is running with
+one; `stdio://` app-server processes cannot be reached by the external bridge.
 
 ## Storage
 

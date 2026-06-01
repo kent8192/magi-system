@@ -2,10 +2,10 @@
 //!
 //! The bridge tails Redis Pub/Sub for the active magi session agent. Each
 //! delivered inbox batch is converted into compact context lines and submitted
-//! to the Codex app-server through `codex app-server proxy`. A new Codex turn is
-//! started for normal idle sessions; if the app-server rejects the turn, the
-//! bridge falls back to `thread/inject_items` so the message is still persisted
-//! into model-visible thread history.
+//! to the Codex app-server through `codex app-server proxy --sock <path>`. A new
+//! Codex turn is started for normal idle sessions; if the app-server rejects the
+//! turn, the bridge falls back to `thread/inject_items` so the message is still
+//! persisted into model-visible thread history.
 
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -24,8 +24,14 @@ use crate::model::RedisKeys;
 use crate::session_identity::{missing_session_agent_message, resolve_identity};
 
 /// Runs the long-lived Codex app-server bridge.
-pub async fn run(thread: Option<String>, cwd: Option<PathBuf>, codex: String) -> Result<()> {
+pub async fn run(
+    thread: Option<String>,
+    cwd: Option<PathBuf>,
+    codex: String,
+    socket: Option<PathBuf>,
+) -> Result<()> {
     let thread_id = resolve_thread_id(thread)?;
+    let socket = resolve_codex_app_server_socket(socket);
     let config = AppConfig::load()?;
     let url = config
         .redis
@@ -49,18 +55,18 @@ pub async fn run(thread: Option<String>, cwd: Option<PathBuf>, codex: String) ->
     let mut wakeups = pubsub.on_message();
     let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
     let status_path = bridge_status_path(&thread_id);
+    let delivery = BridgeDelivery {
+        url: &url,
+        team: &team,
+        agent: &agent,
+        thread_id: &thread_id,
+        cwd: cwd.as_deref(),
+        codex: &codex,
+        socket: &socket,
+    };
 
     write_bridge_status(status_path.as_deref(), "running", None);
-    deliver_pending_and_record(
-        &url,
-        &team,
-        &agent,
-        &thread_id,
-        cwd.as_deref(),
-        &codex,
-        status_path.as_deref(),
-    )
-    .await;
+    deliver_pending_and_record(&delivery, status_path.as_deref()).await;
 
     loop {
         tokio::select! {
@@ -69,26 +75,10 @@ pub async fn run(thread: Option<String>, cwd: Option<PathBuf>, codex: String) ->
                 return Ok(());
             },
             _ = interval.tick() => {
-                deliver_pending_and_record(
-                    &url,
-                    &team,
-                    &agent,
-                    &thread_id,
-                    cwd.as_deref(),
-                    &codex,
-                    status_path.as_deref(),
-                ).await;
+                deliver_pending_and_record(&delivery, status_path.as_deref()).await;
             }
             Some(_) = wakeups.next() => {
-                deliver_pending_and_record(
-                    &url,
-                    &team,
-                    &agent,
-                    &thread_id,
-                    cwd.as_deref(),
-                    &codex,
-                    status_path.as_deref(),
-                ).await;
+                deliver_pending_and_record(&delivery, status_path.as_deref()).await;
             }
         }
     }
@@ -125,41 +115,69 @@ struct DeliveryFailure {
     last_delivered_id: Option<String>,
 }
 
-async fn deliver_pending(
-    url: &str,
-    team: &str,
-    agent: &str,
-    thread_id: &str,
-    cwd: Option<&str>,
-    codex: &str,
-) -> Result<DeliveryOutcome> {
-    let messages = messaging::read_inbox_with_url(url, team, agent, InboxReadMode::Peek).await?;
-    let delivery =
-        deliver_messages_with_submitter(
-            messages,
-            thread_id,
-            cwd,
-            |thread_id, cwd, message_id, text| {
-                let codex = codex.to_string();
-                async move {
-                    submit_to_codex(&codex, &thread_id, cwd.as_deref(), &message_id, &text).await
-                }
-            },
-        )
-        .await;
+struct BridgeDelivery<'a> {
+    url: &'a str,
+    team: &'a str,
+    agent: &'a str,
+    thread_id: &'a str,
+    cwd: Option<&'a str>,
+    codex: &'a str,
+    socket: &'a Path,
+}
 
-    match delivery {
+async fn deliver_pending(delivery: &BridgeDelivery<'_>) -> Result<DeliveryOutcome> {
+    ensure_codex_app_server_socket(delivery.socket)?;
+    let messages = messaging::read_inbox_with_url(
+        delivery.url,
+        delivery.team,
+        delivery.agent,
+        InboxReadMode::Peek,
+    )
+    .await?;
+    let progress = deliver_messages_with_submitter(
+        messages,
+        delivery.thread_id,
+        delivery.cwd,
+        |thread_id, cwd, message_id, text| {
+            let codex = delivery.codex.to_string();
+            let socket = delivery.socket.to_path_buf();
+            async move {
+                submit_to_codex_with_socket(
+                    &codex,
+                    &socket,
+                    &thread_id,
+                    cwd.as_deref(),
+                    &message_id,
+                    &text,
+                )
+                .await
+            }
+        },
+    )
+    .await;
+
+    match progress {
         Ok(progress) => {
             if let Some(last_delivered_id) = progress.last_delivered_id {
-                messaging::advance_inbox_cursor_with_url(url, team, agent, &last_delivered_id)
-                    .await?;
+                messaging::advance_inbox_cursor_with_url(
+                    delivery.url,
+                    delivery.team,
+                    delivery.agent,
+                    &last_delivered_id,
+                )
+                .await?;
             }
             Ok(progress.outcome)
         }
         Err(failure) => {
             if let Some(last_delivered_id) = failure.last_delivered_id {
-                messaging::advance_inbox_cursor_with_url(url, team, agent, &last_delivered_id)
-                    .await?;
+                messaging::advance_inbox_cursor_with_url(
+                    delivery.url,
+                    delivery.team,
+                    delivery.agent,
+                    &last_delivered_id,
+                )
+                .await?;
             }
             Err(failure.error)
         }
@@ -204,21 +222,13 @@ where
     })
 }
 
-async fn deliver_pending_and_record(
-    url: &str,
-    team: &str,
-    agent: &str,
-    thread_id: &str,
-    cwd: Option<&str>,
-    codex: &str,
-    status_path: Option<&Path>,
-) {
-    match deliver_pending(url, team, agent, thread_id, cwd, codex).await {
+async fn deliver_pending_and_record(delivery: &BridgeDelivery<'_>, status_path: Option<&Path>) {
+    match deliver_pending(delivery).await {
         Ok(outcome) => record_delivery_outcome(status_path, outcome),
         Err(error) => {
             let state = bridge_status_state_for_error(&error);
             let status_error = bridge_status_error_message(&error);
-            eprintln!("magi codex bridge delivery failed; will retry: {status_error}");
+            eprintln!("magi codex bridge delivery failed; state={state}: {status_error}");
             write_bridge_status(status_path, state, Some(&status_error));
         }
     }
@@ -236,12 +246,19 @@ fn record_delivery_outcome(status_path: Option<&Path>, outcome: DeliveryOutcome)
 }
 
 /// Returns the bridge status state that should be recorded for a delivery error.
-pub fn bridge_status_state_for_error(_error: &MagiError) -> &'static str {
-    "retrying"
+pub fn bridge_status_state_for_error(error: &MagiError) -> &'static str {
+    match error {
+        MagiError::UnsupportedRuntime(_) => "unsupported",
+        _ => "retrying",
+    }
 }
 
 /// Formats a delivery error for hook-visible bridge status.
 pub fn bridge_status_error_message(error: &MagiError) -> String {
+    if let MagiError::UnsupportedRuntime(message) = error {
+        return message.clone();
+    }
+
     let message = error.to_string();
     if message.contains("codex app-server proxy closed before JSON-RPC response") {
         format!(
@@ -259,6 +276,44 @@ fn default_codex_app_server_socket() -> PathBuf {
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))
         .unwrap_or_else(|| PathBuf::from(".codex"));
     codex_home.join("app-server-control/app-server-control.sock")
+}
+
+/// Resolves the Codex app-server Unix control socket used by the bridge.
+pub fn resolve_codex_app_server_socket(explicit: Option<PathBuf>) -> PathBuf {
+    explicit
+        .or_else(|| std::env::var_os("MAGI_CODEX_APP_SERVER_SOCKET").map(PathBuf::from))
+        .unwrap_or_else(default_codex_app_server_socket)
+}
+
+fn ensure_codex_app_server_socket(socket: &Path) -> Result<()> {
+    let metadata = match std::fs::metadata(socket) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(missing_codex_socket_error(socket));
+        }
+        Err(error) => return Err(MagiError::Io(error)),
+    };
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::FileTypeExt;
+
+        if !metadata.file_type().is_socket() {
+            return Err(MagiError::UnsupportedRuntime(format!(
+                "Codex app-server control socket path is not a Unix socket at {}; set MAGI_CODEX_APP_SERVER_SOCKET to a reachable Unix socket or start a managed Codex app-server daemon. stdio:// app-server processes cannot be reached by magi codex bridge.",
+                socket.display()
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+fn missing_codex_socket_error(socket: &Path) -> MagiError {
+    MagiError::UnsupportedRuntime(format!(
+        "Codex app-server control socket not found at {}; set MAGI_CODEX_APP_SERVER_SOCKET to a reachable Unix socket or start a managed Codex app-server daemon. stdio:// app-server processes cannot be reached by magi codex bridge.",
+        socket.display()
+    ))
 }
 
 fn bridge_status_path(thread_id: &str) -> Option<PathBuf> {
@@ -339,7 +394,20 @@ pub async fn submit_to_codex(
     message_id: &str,
     text: &str,
 ) -> Result<()> {
-    let mut child = spawn_codex_proxy(codex)?;
+    let socket = resolve_codex_app_server_socket(None);
+    submit_to_codex_with_socket(codex, &socket, thread_id, cwd, message_id, text).await
+}
+
+/// Submits a context line to the Codex app-server through a specific socket.
+pub async fn submit_to_codex_with_socket(
+    codex: &str,
+    socket: &Path,
+    thread_id: &str,
+    cwd: Option<&str>,
+    message_id: &str,
+    text: &str,
+) -> Result<()> {
+    let mut child = spawn_codex_proxy(codex, socket)?;
     let stdin = child
         .stdin
         .take()
@@ -397,10 +465,12 @@ pub async fn submit_to_codex(
     Ok(())
 }
 
-fn spawn_codex_proxy(codex: &str) -> Result<Child> {
+fn spawn_codex_proxy(codex: &str, socket: &Path) -> Result<Child> {
     Command::new(codex)
         .arg("app-server")
         .arg("proxy")
+        .arg("--sock")
+        .arg(socket)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -546,6 +616,21 @@ mod tests {
         let status = std::fs::read_to_string(status_path).expect("status");
         assert!(status.contains("state=running"));
         assert!(status.contains("last_error=\n"));
+    }
+
+    #[test]
+    fn missing_codex_socket_preflight_reports_unsupported_runtime() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let missing_socket = temp.path().join("app-server.sock");
+
+        let error = ensure_codex_app_server_socket(&missing_socket)
+            .expect_err("missing socket should be unsupported");
+
+        assert_eq!(bridge_status_state_for_error(&error), "unsupported");
+        let message = bridge_status_error_message(&error);
+        assert!(message.contains(missing_socket.to_str().unwrap()));
+        assert!(message.contains("MAGI_CODEX_APP_SERVER_SOCKET"));
+        assert!(message.contains("stdio://"));
     }
 
     #[tokio::test]

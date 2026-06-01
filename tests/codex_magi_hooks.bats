@@ -85,6 +85,17 @@ teardown() {
   [ -f "$pid_file" ]
 }
 
+@test "Codex SessionStart passes explicit app-server socket to bridge" {
+  MAGI_CODEX_APP_SERVER_SOCKET=/tmp/codex-app.sock \
+    bash "$HOOKS/magi-codex-session-start.sh" <<<'{"session_id":"codex-socket","cwd":"/tmp/project","hook_event_name":"SessionStart"}'
+
+  for _ in 1 2 3 4 5; do
+    grep -q "bridge codex bridge --thread codex-socket --cwd /tmp/project --codex codex --socket /tmp/codex-app.sock" "$CALLS" && break
+    sleep 0.1
+  done
+  grep -q "bridge codex bridge --thread codex-socket --cwd /tmp/project --codex codex --socket /tmp/codex-app.sock" "$CALLS"
+}
+
 @test "MAGI_CODEX_APP_SERVER_BRIDGE=0 disables Codex bridge startup" {
   MAGI_CODEX_APP_SERVER_BRIDGE=0 run bash "$HOOKS/magi-codex-session-start.sh" <<<'{"session_id":"codex-no-bridge","cwd":"/tmp/project","hook_event_name":"SessionStart"}'
   [ "$status" -eq 0 ]
@@ -165,6 +176,26 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"codex app-server bridge: retrying"* ]]
   [[ "$output" == *"last_error: failed to connect to socket at /tmp/app-server-control.sock"* ]]
+}
+
+@test "Codex UserPromptSubmit reports unsupported bridge status sidecar" {
+  mkdir -p "$MAGI_CODEX_STATE_DIR/sessions" "$MAGI_CODEX_STATE_DIR/bridges"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_CODEX_STATE_DIR/sessions/thread-unsupported.agent"
+  sleep 30 &
+  local bridge_pid="$!"
+  printf '%s\n' "$bridge_pid" >"$MAGI_CODEX_STATE_DIR/bridges/thread-unsupported.pid"
+  cat >"$MAGI_CODEX_STATE_DIR/bridges/thread-unsupported.status" <<'EOF'
+state=unsupported
+updated_at=100
+last_error=Codex app-server control socket not found at /tmp/codex.sock; set MAGI_CODEX_APP_SERVER_SOCKET to a reachable Unix socket.
+EOF
+  printf 'pid=%s\n' "$bridge_pid" >>"$MAGI_CODEX_STATE_DIR/bridges/thread-unsupported.status"
+
+  CODEX_THREAD_ID=thread-unsupported run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
+  kill "$bridge_pid" 2>/dev/null || true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"codex app-server bridge: unsupported"* ]]
+  [[ "$output" == *"last_error: Codex app-server control socket not found at /tmp/codex.sock; set MAGI_CODEX_APP_SERVER_SOCKET to a reachable Unix socket."* ]]
 }
 
 @test "Codex UserPromptSubmit cleans stale bridge pid and restarts bridge" {
