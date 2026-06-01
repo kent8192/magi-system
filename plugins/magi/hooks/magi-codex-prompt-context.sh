@@ -108,6 +108,7 @@ record_health_failure() {
 STATE_DIR="${MAGI_CODEX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/magi-codex}"
 SESSIONS_DIR="$STATE_DIR/sessions"
 CURRENT_DIR="$STATE_DIR/current"
+BRIDGES_DIR="$STATE_DIR/bridges"
 SESSION_ID="$(json_string session_id)"
 if [ -z "$SESSION_ID" ]; then
   SESSION_ID="${CODEX_THREAD_ID:-${CODEX_SESSION_ID:-}}"
@@ -142,6 +143,45 @@ health_file=""
 if [ -n "$session_file" ]; then
   health_file="${session_file%.agent}.health"
 fi
+
+bridge_on() {
+  case "$(printf '%s' "${MAGI_CODEX_APP_SERVER_BRIDGE:-1}" | tr '[:upper:]' '[:lower:]')" in
+    0 | false | no | off) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+status_field() {
+  local file="$1" key="$2"
+  [ -f "$file" ] || return 0
+  sed -n "s/^${key}=//p" "$file" 2>/dev/null | head -1
+}
+
+bridge_running() {
+  [ -n "${1:-}" ] && [ -f "$1" ] || return 1
+  local pid
+  pid="$(cat "$1" 2>/dev/null || true)"
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+start_bridge() {
+  local pid_file="$1" log_file="$2" status_file="$3"
+  mkdir -p "$BRIDGES_DIR" 2>/dev/null || true
+  MAGI_SESSION_ID="$SESSION_ID" CODEX_THREAD_ID="$SESSION_ID" CODEX_SESSION_ID="$SESSION_ID" \
+    MAGI_CODEX_STATE_DIR="$STATE_DIR" \
+    "$MAGI" codex bridge --thread "$SESSION_ID" --cwd "$PROJECT_CWD" \
+    --codex "${MAGI_CODEX_CLI:-codex}" \
+    >>"$log_file" 2>&1 &
+  local bridge_pid="$!"
+  printf '%s\n' "$bridge_pid" >"$pid_file" 2>/dev/null || true
+  {
+    printf 'state=starting\n'
+    printf 'pid=%s\n' "$bridge_pid"
+    printf 'updated_at=%s\n' "$(now_seconds)"
+    printf 'last_error=\n'
+  } >"$status_file" 2>/dev/null || true
+}
+
 if [ -n "$health_file" ] && [ "$redis_state" = "reachable" ]; then
   cleanup_pending_agent "$health_file" "$session_file" "$current_file" || true
 fi
@@ -183,6 +223,30 @@ if [ -n "$agent" ] && [ -n "$team" ] && [ -n "$current_file" ]; then
   printf '%s\n%s\n' "$agent" "$team" >"$current_file" 2>/dev/null || true
 fi
 
-ctx="magi-system context. session_id: ${SESSION_ID:-unset}; agent: ${agent:-unset}; team: ${team:-unset}; redis: ${redis_state}; session_record: ${session_record}; state_dir: $(sanitize "$STATE_DIR")."
+bridge_state="stopped"
+bridge_error=""
+if bridge_on; then
+  if [ "$redis_state" = "reachable" ] && [ -n "$agent" ] && [ -n "$team" ] && [ -n "$SESSION_ID" ]; then
+    bridge_pid_file="$BRIDGES_DIR/$(safe_key "$SESSION_ID").pid"
+    bridge_log_file="$BRIDGES_DIR/$(safe_key "$SESSION_ID").log"
+    bridge_status_file="$BRIDGES_DIR/$(safe_key "$SESSION_ID").status"
+    if bridge_running "$bridge_pid_file"; then
+      bridge_state="$(sanitize "$(status_field "$bridge_status_file" state)")"
+      [ -n "$bridge_state" ] || bridge_state="running"
+      bridge_error="$(sanitize "$(status_field "$bridge_status_file" last_error)")"
+    else
+      rm -f "$bridge_pid_file" 2>/dev/null || true
+      start_bridge "$bridge_pid_file" "$bridge_log_file" "$bridge_status_file"
+      bridge_state="starting"
+    fi
+  fi
+else
+  bridge_state="disabled"
+fi
+
+ctx="magi-system context. session_id: ${SESSION_ID:-unset}; agent: ${agent:-unset}; team: ${team:-unset}; redis: ${redis_state}; session_record: ${session_record}; codex app-server bridge: ${bridge_state}; state_dir: $(sanitize "$STATE_DIR")."
+if [ -n "$bridge_error" ]; then
+  ctx="${ctx%.} last_error: ${bridge_error}."
+fi
 printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' "$ctx"
 exit 0

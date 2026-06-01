@@ -137,7 +137,11 @@ turn with `turn/start` so the agent acts immediately; if the app-server rejects
 that because the thread is already busy, the bridge persists the message with
 `thread/inject_items` as a fallback. `MAGI_CODEX_APP_SERVER_BRIDGE=0` disables
 this background bridge, and `MAGI_CODEX_CLI` overrides the Codex executable used
-for `codex app-server proxy`.
+for `codex app-server proxy`. The bridge records a status sidecar under the
+Codex hook state directory so prompt hooks can distinguish `starting`,
+`running`, `retrying`, `stopped`, and `disabled`. Delivery failures are retried
+without advancing the inbox cursor; the cursor advances only after all pending
+messages are submitted successfully.
 
 ## Plugin Parity (Codex vs Claude Code)
 

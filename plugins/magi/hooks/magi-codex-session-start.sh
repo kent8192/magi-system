@@ -119,14 +119,23 @@ bridge_running() {
   [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
 }
 
+status_field() {
+  local file="$1" key="$2"
+  [ -f "$file" ] || return 0
+  sed -n "s/^${key}=//p" "$file" 2>/dev/null | head -1
+}
+
 bridge_state="stopped"
 if bridge_on && [ "$redis_state" = "reachable" ] && [ -n "$agent" ] && [ -n "$team" ] \
   && [ -n "$SESSION_ID" ]; then
   bridge_pid_file="$BRIDGES_DIR/$(safe_key "$SESSION_ID").pid"
   bridge_log_file="$BRIDGES_DIR/$(safe_key "$SESSION_ID").log"
+  bridge_status_file="$BRIDGES_DIR/$(safe_key "$SESSION_ID").status"
   if bridge_running "$bridge_pid_file"; then
-    bridge_state="running"
+    bridge_state="$(sanitize "$(status_field "$bridge_status_file" state)")"
+    [ -n "$bridge_state" ] || bridge_state="running"
   else
+    rm -f "$bridge_pid_file" 2>/dev/null || true
     mkdir -p "$BRIDGES_DIR" 2>/dev/null || true
     MAGI_SESSION_ID="$SESSION_ID" CODEX_THREAD_ID="$SESSION_ID" CODEX_SESSION_ID="$SESSION_ID" \
       MAGI_CODEX_STATE_DIR="$STATE_DIR" \
@@ -135,6 +144,12 @@ if bridge_on && [ "$redis_state" = "reachable" ] && [ -n "$agent" ] && [ -n "$te
       >>"$bridge_log_file" 2>&1 &
     bridge_pid="$!"
     printf '%s\n' "$bridge_pid" >"$bridge_pid_file" 2>/dev/null || true
+    {
+      printf 'state=starting\n'
+      printf 'pid=%s\n' "$bridge_pid"
+      printf 'updated_at=%s\n' "$(date +%s)"
+      printf 'last_error=\n'
+    } >"$bridge_status_file" 2>/dev/null || true
     bridge_state="starting"
   fi
 elif ! bridge_on; then

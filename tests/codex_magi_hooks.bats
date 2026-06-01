@@ -147,6 +147,45 @@ teardown() {
   [ "$(sed -n '2p' "$current")" = "testteam" ]
 }
 
+@test "Codex UserPromptSubmit reports bridge status sidecar" {
+  mkdir -p "$MAGI_CODEX_STATE_DIR/sessions" "$MAGI_CODEX_STATE_DIR/bridges"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_CODEX_STATE_DIR/sessions/thread-bridge.agent"
+  sleep 30 &
+  local bridge_pid="$!"
+  printf '%s\n' "$bridge_pid" >"$MAGI_CODEX_STATE_DIR/bridges/thread-bridge.pid"
+  cat >"$MAGI_CODEX_STATE_DIR/bridges/thread-bridge.status" <<'EOF'
+state=retrying
+updated_at=100
+last_error=failed to connect to socket at /tmp/app-server-control.sock
+EOF
+  printf 'pid=%s\n' "$bridge_pid" >>"$MAGI_CODEX_STATE_DIR/bridges/thread-bridge.status"
+
+  CODEX_THREAD_ID=thread-bridge run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
+  kill "$bridge_pid" 2>/dev/null || true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"codex app-server bridge: retrying"* ]]
+  [[ "$output" == *"last_error: failed to connect to socket at /tmp/app-server-control.sock"* ]]
+}
+
+@test "Codex UserPromptSubmit cleans stale bridge pid and restarts bridge" {
+  mkdir -p "$MAGI_CODEX_STATE_DIR/sessions" "$MAGI_CODEX_STATE_DIR/bridges"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_CODEX_STATE_DIR/sessions/thread-stale.agent"
+  printf '999999\n' >"$MAGI_CODEX_STATE_DIR/bridges/thread-stale.pid"
+  cat >"$MAGI_CODEX_STATE_DIR/bridges/thread-stale.status" <<'EOF'
+state=running
+pid=999999
+updated_at=100
+last_error=
+EOF
+
+  CODEX_THREAD_ID=thread-stale run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"codex app-server bridge: starting"* ]]
+  grep -q "bridge codex bridge --thread thread-stale --cwd /tmp/project --codex codex" "$CALLS"
+  [ -f "$MAGI_CODEX_STATE_DIR/bridges/thread-stale.pid" ]
+  [ "$(cat "$MAGI_CODEX_STATE_DIR/bridges/thread-stale.pid")" != "999999" ]
+}
+
 @test "Codex UserPromptSubmit spawns when SessionStart did not record this session" {
   CODEX_THREAD_ID=thread-4 run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
   [ "$status" -eq 0 ]
