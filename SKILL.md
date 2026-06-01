@@ -35,7 +35,9 @@ despawn the stale agent after Redis becomes reachable again.
 Codex SessionStart hooks also launch `magi codex bridge` by default so incoming
 Redis Pub/Sub messages become Codex app-server turns for the current thread.
 Prompt hooks report whether that bridge is starting, running, retrying, stopped,
-or disabled.
+or disabled. A `retrying` bridge keeps the last app-server delivery error visible
+until a later message is successfully submitted; empty inbox checks do not clear
+that error.
 
 ## Storage
 

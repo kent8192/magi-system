@@ -7,6 +7,7 @@
 //! bridge falls back to `thread/inject_items` so the message is still persisted
 //! into model-visible thread history.
 
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -106,6 +107,24 @@ fn resolve_thread_id(thread: Option<String>) -> Result<String> {
         })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeliveryOutcome {
+    NoPending,
+    Delivered,
+}
+
+#[derive(Debug)]
+struct DeliveryProgress {
+    outcome: DeliveryOutcome,
+    last_delivered_id: Option<String>,
+}
+
+#[derive(Debug)]
+struct DeliveryFailure {
+    error: MagiError,
+    last_delivered_id: Option<String>,
+}
+
 async fn deliver_pending(
     url: &str,
     team: &str,
@@ -113,22 +132,76 @@ async fn deliver_pending(
     thread_id: &str,
     cwd: Option<&str>,
     codex: &str,
-) -> Result<()> {
+) -> Result<DeliveryOutcome> {
     let messages = messaging::read_inbox_with_url(url, team, agent, InboxReadMode::Peek).await?;
+    let delivery =
+        deliver_messages_with_submitter(
+            messages,
+            thread_id,
+            cwd,
+            |thread_id, cwd, message_id, text| {
+                let codex = codex.to_string();
+                async move {
+                    submit_to_codex(&codex, &thread_id, cwd.as_deref(), &message_id, &text).await
+                }
+            },
+        )
+        .await;
+
+    match delivery {
+        Ok(progress) => {
+            if let Some(last_delivered_id) = progress.last_delivered_id {
+                messaging::advance_inbox_cursor_with_url(url, team, agent, &last_delivered_id)
+                    .await?;
+            }
+            Ok(progress.outcome)
+        }
+        Err(failure) => {
+            if let Some(last_delivered_id) = failure.last_delivered_id {
+                messaging::advance_inbox_cursor_with_url(url, team, agent, &last_delivered_id)
+                    .await?;
+            }
+            Err(failure.error)
+        }
+    }
+}
+
+async fn deliver_messages_with_submitter<F, Fut>(
+    messages: Vec<MessageRecord>,
+    thread_id: &str,
+    cwd: Option<&str>,
+    mut submit: F,
+) -> std::result::Result<DeliveryProgress, DeliveryFailure>
+where
+    F: FnMut(String, Option<String>, String, String) -> Fut,
+    Fut: Future<Output = Result<()>>,
+{
     if messages.is_empty() {
-        return Ok(());
+        return Ok(DeliveryProgress {
+            outcome: DeliveryOutcome::NoPending,
+            last_delivered_id: None,
+        });
     }
 
-    let last_delivered_id = messages
-        .last()
-        .map(|message| message.id.clone())
-        .unwrap_or_default();
+    let thread_id = thread_id.to_string();
+    let cwd = cwd.map(ToOwned::to_owned);
+    let mut last_delivered_id = None;
     for message in messages {
+        let message_id = message.id.clone();
         let text = format_context_line(&message);
-        submit_to_codex(codex, thread_id, cwd, &message.id, &text).await?;
+        if let Err(error) = submit(thread_id.clone(), cwd.clone(), message_id.clone(), text).await {
+            return Err(DeliveryFailure {
+                error,
+                last_delivered_id,
+            });
+        }
+        last_delivered_id = Some(message_id);
     }
-    messaging::advance_inbox_cursor_with_url(url, team, agent, &last_delivered_id).await?;
-    Ok(())
+
+    Ok(DeliveryProgress {
+        outcome: DeliveryOutcome::Delivered,
+        last_delivered_id,
+    })
 }
 
 async fn deliver_pending_and_record(
@@ -141,12 +214,23 @@ async fn deliver_pending_and_record(
     status_path: Option<&Path>,
 ) {
     match deliver_pending(url, team, agent, thread_id, cwd, codex).await {
-        Ok(()) => write_bridge_status(status_path, "running", None),
+        Ok(outcome) => record_delivery_outcome(status_path, outcome),
         Err(error) => {
             let state = bridge_status_state_for_error(&error);
             let status_error = bridge_status_error_message(&error);
             eprintln!("magi codex bridge delivery failed; will retry: {status_error}");
             write_bridge_status(status_path, state, Some(&status_error));
+        }
+    }
+}
+
+fn record_delivery_outcome(status_path: Option<&Path>, outcome: DeliveryOutcome) {
+    match outcome {
+        DeliveryOutcome::Delivered => write_bridge_status(status_path, "running", None),
+        DeliveryOutcome::NoPending => {
+            if current_bridge_status_state(status_path).is_none() {
+                write_bridge_status(status_path, "running", None);
+            }
         }
     }
 }
@@ -221,6 +305,15 @@ fn write_bridge_status(path: Option<&Path>, state: &str, last_error: Option<&str
     if let Err(error) = std::fs::write(path, content) {
         eprintln!("magi codex bridge could not write status: {error}");
     }
+}
+
+fn current_bridge_status_state(path: Option<&Path>) -> Option<String> {
+    let path = path?;
+    let content = std::fs::read_to_string(path).ok()?;
+    content
+        .lines()
+        .find_map(|line| line.strip_prefix("state=").map(ToOwned::to_owned))
+        .filter(|state| !state.is_empty())
 }
 
 fn sanitize_status_value(value: &str) -> String {
@@ -398,5 +491,103 @@ impl JsonRpcClient {
             }
             return Ok(value.get("result").cloned().unwrap_or_else(|| json!({})));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+
+    fn message(id: &str, body: &str) -> MessageRecord {
+        MessageRecord {
+            id: id.to_string(),
+            event: crate::model::MessageEvent {
+                from: "sender".to_string(),
+                to: "recipient".to_string(),
+                body: body.to_string(),
+                created_at: "123".to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn no_pending_delivery_preserves_retrying_status() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let status_path = temp.path().join("bridge.status");
+        write_bridge_status(
+            Some(&status_path),
+            "retrying",
+            Some("failed to connect to app-server"),
+        );
+
+        record_delivery_outcome(Some(&status_path), DeliveryOutcome::NoPending);
+
+        let status = std::fs::read_to_string(status_path).expect("status");
+        assert!(status.contains("state=retrying"));
+        assert!(status.contains("last_error=failed to connect to app-server"));
+    }
+
+    #[test]
+    fn successful_delivery_clears_previous_retrying_status() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let status_path = temp.path().join("bridge.status");
+        write_bridge_status(
+            Some(&status_path),
+            "retrying",
+            Some("failed to connect to app-server"),
+        );
+
+        record_delivery_outcome(Some(&status_path), DeliveryOutcome::Delivered);
+
+        let status = std::fs::read_to_string(status_path).expect("status");
+        assert!(status.contains("state=running"));
+        assert!(status.contains("last_error=\n"));
+    }
+
+    #[tokio::test]
+    async fn failed_batch_reports_last_successful_cursor() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let seen_attempts = Arc::clone(&attempts);
+
+        let result = deliver_messages_with_submitter(
+            vec![message("1-0", "first"), message("2-0", "second")],
+            "thread",
+            Some("/tmp/project"),
+            move |_thread_id, _cwd, _message_id, _text| {
+                let seen_attempts = Arc::clone(&seen_attempts);
+                async move {
+                    if seen_attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                        Ok(())
+                    } else {
+                        Err(MagiError::CommandFailed("proxy down".to_string()))
+                    }
+                }
+            },
+        )
+        .await
+        .expect_err("second delivery should fail");
+
+        assert_eq!(result.last_delivered_id.as_deref(), Some("1-0"));
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn first_failed_delivery_has_no_cursor_to_advance() {
+        let result = deliver_messages_with_submitter(
+            vec![message("1-0", "first")],
+            "thread",
+            Some("/tmp/project"),
+            |_thread_id, _cwd, _message_id, _text| async {
+                Err(MagiError::CommandFailed("proxy down".to_string()))
+            },
+        )
+        .await
+        .expect_err("first delivery should fail");
+
+        assert!(result.last_delivered_id.is_none());
     }
 }
