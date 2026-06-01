@@ -12,7 +12,6 @@ installer:
   - changed-files:
       - any-glob-to-any-file:
           - install.sh
-          - setup.sh
           - uninstall.sh
 
 templates:

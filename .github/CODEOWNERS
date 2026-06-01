@@ -7,7 +7,6 @@
 # Runtime scripts and installer surface.
 /scripts/ @kent8192
 /install.sh @kent8192
-/setup.sh @kent8192
 /uninstall.sh @kent8192
 
 # Tests and user-facing documentation.
