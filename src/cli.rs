@@ -18,7 +18,7 @@
 //!   send    <TO> <MESSAGE>...
 //!   inbox
 //!   history [--team <T>] [--agent <A>]
-//!   watch   [--format line|json]
+//!   watch   [--format line|json|context] [--once]
 //!   ssh     {start|status|stop}
 //!   install
 //!   config  {get|set}
@@ -120,13 +120,18 @@ pub enum Command {
 
     /// Subscribe to the Redis Pub/Sub channel and stream incoming messages.
     ///
-    /// Runs until interrupted (Ctrl-C).  Use `--format json` to emit
-    /// newline-delimited JSON suitable for machine consumption; the default
-    /// `line` format is human-readable.
+    /// Runs until interrupted (Ctrl-C) unless `--once` is set.  Use
+    /// `--format json` to emit newline-delimited JSON suitable for machine
+    /// consumption; `context` emits agent-context lines; the default `line`
+    /// format is human-readable.
     Watch {
-        /// Output format: `line` (human-readable) or `json` (NDJSON).
+        /// Output format: `line` (human-readable), `json` (NDJSON), or
+        /// `context` (`from->to: body`).
         #[arg(long, value_enum, default_value_t = WatchFormat::Line)]
         format: WatchFormat,
+        /// Exit after the first non-empty delivery batch.
+        #[arg(long)]
+        once: bool,
     },
 
     /// Manage the SSH helper process used for secure remote connections.
@@ -285,4 +290,6 @@ pub enum WatchFormat {
     Line,
     /// Newline-delimited JSON (NDJSON) for machine consumption.
     Json,
+    /// Agent-context format: `<from>-><to>: <body>`.
+    Context,
 }

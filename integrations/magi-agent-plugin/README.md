@@ -79,6 +79,24 @@ and it never boots Redis or the bridge unless you opt in:
 
 - `MAGI_AGENT_AUTOSTART_REDIS=1` — start managed Redis at session start if it is down.
 - `MAGI_AGENT_AUTOSTART_BRIDGE=1` — start the `/magi-system` bridge daemon at session start.
+- `MAGI_AGENT_MONITOR=0` — disable the Claude Code Monitor directive.
+
+### Live Monitor delivery
+
+When Redis is reachable, a session agent exists, and the auto-reply bridge is
+not running, the SessionStart hook asks Claude Code to launch a Monitor job:
+
+```bash
+hooks/magi-monitor-once.sh <claude-session-id>
+```
+
+The wrapper runs `magi watch --once --format context`. It waits in the
+background until Redis Pub/Sub announces a message for this session's MAGI
+agent, prints each delivered line as `<sender>-><recipient>: message`, and
+exits. Claude Code should treat the completed Monitor output as injected magi
+context, act on it, and launch the same Monitor command again for the next
+message. If `/magi-system start` is running, the hook skips this directive so
+the bridge remains the only consumer of incoming messages.
 
 ### Ephemeral session agent
 

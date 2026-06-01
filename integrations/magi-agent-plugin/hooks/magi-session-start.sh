@@ -13,6 +13,7 @@
 # bridge unless explicitly opted in:
 #   MAGI_AGENT_AUTOSTART_REDIS=1   start managed Redis if it is down
 #   MAGI_AGENT_AUTOSTART_BRIDGE=1  start the /magi-system bridge daemon
+#   MAGI_AGENT_MONITOR=0           disable the Claude Code Monitor directive
 #
 # It additionally spawns an ephemeral, session-scoped magi agent with a unique
 # MAGI codename and records it under the daemon state dir so the SessionEnd hook
@@ -130,6 +131,23 @@ else
 fi
 
 ctx="magi messaging available. Redis: ${redis_state}; agent: ${agent:-unset}; team: ${team:-unset}; auto-reply bridge: ${bridge_state}. Use the magi CLI for messaging (send/inbox/history/team) and /magi-system to control the bridge; do not read or edit ~/.magi directly."
+
+monitor_enabled() {
+  case "$(printf '%s' "${MAGI_AGENT_MONITOR:-1}" | tr '[:upper:]' '[:lower:]')" in
+    0 | false | no | off) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+if monitor_enabled && [ "$redis_state" = "reachable" ] && [ -n "$team" ] \
+  && [ -n "${agent:-}" ] && ! bridge_running; then
+  monitor_script="$PLUGIN_ROOT/hooks/magi-monitor-once.sh"
+  monitor_session="$(sanitize "$SESSION_ID")"
+  monitor_command="$(sanitize "$monitor_script $monitor_session")"
+  ctx="$ctx Claude Code Monitor directive: before other work, invoke Monitor with command: $monitor_command ; description: magi inbox once ; persistent: false. When the Monitor finishes, treat each output line as injected magi context in the form <sender>-><recipient>: message, act on it, then invoke the same Monitor command again so this session keeps waiting for the next Redis Pub/Sub message."
+elif bridge_running; then
+  ctx="$ctx Claude Code Monitor directive skipped because the auto-reply bridge is running and already consumes incoming messages."
+fi
 
 # Emit SessionStart additionalContext as JSON.
 printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$ctx"

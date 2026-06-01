@@ -58,7 +58,10 @@ Messages are appended to `magi:stream:<team>` with fields:
 active agent, and advances the cursor to the last scanned stream entry.
 
 `magi watch` subscribes to `magi:pubsub:<team>` and also polls periodically, so
-missed Pub/Sub wakeups do not lose durable Stream messages.
+missed Pub/Sub wakeups do not lose durable Stream messages. `magi watch --once`
+uses the same delivery path but exits after the first non-empty batch; with
+`--format context` it prints `<sender>-><recipient>: message` for direct agent
+context injection.
 
 ## Invites
 
@@ -109,6 +112,15 @@ state, and session record status. If Codex was updated after a session started
 and SessionStart did not create a record, UserPromptSubmit performs the same
 spawn-and-record step before injecting context.
 
+The Claude Code plugin uses the runtime's Monitor primitive when the autonomous
+bridge is not running. SessionStart directs Claude Code to launch
+`hooks/magi-monitor-once.sh <session-id>`, which blocks in
+`magi watch --once --format context`. When Redis publishes a wakeup for this
+agent, the Monitor process exits with `<sender>-><recipient>: message`; Claude
+Code handles that completed background output and relaunches the same Monitor
+command for the next message. If `/magi-system start` is running, the Monitor
+directive is skipped so the SDK bridge remains the only inbox consumer.
+
 ## Plugin Parity (Codex vs Claude Code)
 
 The messaging command surface is intentionally mirrored across the Codex `magi`
@@ -120,8 +132,9 @@ are deliberate and **not** bugs to be "fixed":
   Codex skill needs a `name:` field; a Claude Code slash command does not.
 - **The auto-reply bridge** (`/magi-system`, the `magi-agent` skill) is a
   **Claude Code only** feature because it is built on the Claude Agent SDK.
-  Codex has no equivalent bridge, but it does have native plugin hooks for the
-  ephemeral session-agent lifecycle and per-prompt magi-system context.
+  Claude Code also has a Monitor-based live-delivery path for foreground
+  sessions. Codex has no Monitor tool, but it does have native plugin hooks for
+  the ephemeral session-agent lifecycle and per-prompt magi-system context.
 
 ## SSH
 

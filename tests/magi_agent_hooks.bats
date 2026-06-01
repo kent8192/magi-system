@@ -35,6 +35,11 @@ fi
 if [ "\$1" = "agent" ] && [ "\$2" = "despawn" ]; then
   echo "despawn \$*" >>"$CALLS"; exit 0
 fi
+if [ "\$1" = "watch" ]; then
+  echo "watch \$*" >>"$CALLS"
+  printf 'fatherly-balthasar->quiet-melchior: hello from redis\n'
+  exit 0
+fi
 exit 0
 EOF
   chmod +x "$FAKE_MAGI"
@@ -50,12 +55,32 @@ teardown() {
   [ "$status" -eq 0 ]
   # Context reflects the freshly spawned agent.
   [[ "$output" == *"agent: quiet-melchior"* ]]
+  [[ "$output" == *"Claude Code Monitor directive"* ]]
+  [[ "$output" == *"magi-monitor-once.sh sess-1"* ]]
 
   local file="$MAGI_AGENT_STATE_DIR/sessions/sess-1.agent"
   [ -f "$file" ]
   [ "$(sed -n '1p' "$file")" = "quiet-melchior" ]
   [ "$(sed -n '2p' "$file")" = "testteam" ]
   [ "$(sed -n '3p' "$file")" = "" ]
+}
+
+@test "SessionStart skips Monitor directive when bridge is running" {
+  mkdir -p "$MAGI_AGENT_STATE_DIR"
+  printf '%s\n' "$$" >"$MAGI_AGENT_STATE_DIR/agentd.pid"
+
+  run bash "$HOOKS/magi-session-start.sh" <<<'{"session_id":"sess-bridge","source":"startup"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"auto-reply bridge: running"* ]]
+  [[ "$output" == *"Monitor directive skipped"* ]]
+  [[ "$output" != *"magi-monitor-once.sh sess-bridge"* ]]
+}
+
+@test "magi Monitor wrapper emits context-form messages and uses the session id" {
+  run bash "$HOOKS/magi-monitor-once.sh" "sess-monitor"
+  [ "$status" -eq 0 ]
+  [ "$output" = "fatherly-balthasar->quiet-melchior: hello from redis" ]
+  grep -q "watch watch --once --format context" "$CALLS"
 }
 
 @test "SessionEnd despawns the agent and clears the record" {
