@@ -143,9 +143,13 @@ that because the thread is already busy, the bridge persists the message with
 this background bridge, and `MAGI_CODEX_CLI` overrides the Codex executable used
 for `codex app-server proxy`. The bridge records a status sidecar under the
 Codex hook state directory so prompt hooks can distinguish `starting`,
-`running`, `retrying`, `stopped`, and `disabled`. Delivery failures are retried
-without advancing the inbox cursor; the cursor advances only after all pending
-messages are submitted successfully.
+`running`, `retrying`, `stopped`, and `disabled`. `running` means the bridge
+process is alive and has no known delivery failure, or that a previous failure
+has been cleared by a successful delivery. If a delivery fails because the Codex
+app-server is unavailable, the status remains `retrying` with the last error
+until a later delivery succeeds. Delivery failures are retried without
+acknowledging the failed message: when a batch partially succeeds, the cursor
+advances only through the successfully submitted messages.
 
 ## Plugin Parity (Codex vs Claude Code)
 

@@ -54,7 +54,8 @@ The repository ships two plugins under the `magi` marketplace:
   session end or after repeated Redis health-check failures. The hooks also
   launch `magi codex bridge` for the current Codex thread so Redis Pub/Sub
   wakeups become live Codex app-server turns, and they report the bridge state
-  on each prompt.
+  on each prompt. App-server delivery failures keep the bridge in `retrying`
+  until a later delivery succeeds.
 - **`magi-agent` (Claude Code)** — the event-driven bridge under
   `integrations/magi-agent-plugin/` that turns incoming magi messages into a
   live Claude session. When that bridge is stopped, the SessionStart hook tells
