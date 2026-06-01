@@ -19,6 +19,7 @@
 //!   inbox
 //!   history [--team <T>] [--agent <A>]
 //!   watch   [--format line|json|context] [--once]
+//!   codex   {bridge}
 //!   ssh     {start|status|stop}
 //!   install
 //!   config  {get|set}
@@ -132,6 +133,12 @@ pub enum Command {
         /// Exit after the first non-empty delivery batch.
         #[arg(long)]
         once: bool,
+    },
+
+    /// Integrate magi delivery with Codex-specific runtime surfaces.
+    Codex {
+        #[command(subcommand)]
+        command: CodexCommand,
     },
 
     /// Manage the SSH helper process used for secure remote connections.
@@ -281,6 +288,23 @@ pub enum ConfigCommand {
     Get { key: String },
     /// Write a configuration value.
     Set { key: String, value: String },
+}
+
+/// Subcommands for Codex runtime integrations.
+#[derive(Debug, Subcommand)]
+pub enum CodexCommand {
+    /// Bridge Redis Pub/Sub delivery into a running Codex app-server thread.
+    Bridge {
+        /// Codex thread id to inject into; defaults to CODEX_THREAD_ID/CODEX_SESSION_ID.
+        #[arg(long)]
+        thread: Option<String>,
+        /// Working directory to pass to new app-server turns.
+        #[arg(long)]
+        cwd: Option<std::path::PathBuf>,
+        /// Codex CLI executable used for `codex app-server proxy`.
+        #[arg(long, default_value = "codex")]
+        codex: String,
+    },
 }
 
 /// Output format used by the `watch` subcommand.

@@ -32,6 +32,9 @@ pub mod agent;
 /// CLI command definitions and top-level dispatch logic.
 pub mod cli;
 
+/// Codex app-server bridge for pushing magi messages into live Codex threads.
+pub mod codex_bridge;
+
 /// Runtime configuration sourced from environment variables and the
 /// `~/.magi` state directory.
 pub mod config;

@@ -128,6 +128,17 @@ three due consecutive failures the sidecar marks cleanup pending; the next hook
 run that can reach Redis removes the agent through `magi agent despawn` and
 clears the session record.
 
+For live Codex delivery, SessionStart launches `magi codex bridge --thread
+<session-id>` as a session-scoped background process and SessionEnd stops it.
+The bridge subscribes to the team Pub/Sub channel, drains unread inbox messages
+for the session agent, formats each delivery as `<sender>-><recipient>: message`,
+and sends it to `codex app-server proxy`. The normal path starts a new Codex
+turn with `turn/start` so the agent acts immediately; if the app-server rejects
+that because the thread is already busy, the bridge persists the message with
+`thread/inject_items` as a fallback. `MAGI_CODEX_APP_SERVER_BRIDGE=0` disables
+this background bridge, and `MAGI_CODEX_CLI` overrides the Codex executable used
+for `codex app-server proxy`.
+
 ## Plugin Parity (Codex vs Claude Code)
 
 The messaging command surface is intentionally mirrored across the Codex `magi`
@@ -140,8 +151,9 @@ are deliberate and **not** bugs to be "fixed":
 - **The auto-reply bridge** (`/magi-system`, the `magi-agent` skill) is a
   **Claude Code only** feature because it is built on the Claude Agent SDK.
   Claude Code also has a Monitor-based live-delivery path for foreground
-  sessions. Codex has no Monitor tool, but it does have native plugin hooks for
-  the ephemeral session-agent lifecycle and per-prompt magi-system context.
+  sessions. Codex uses a Codex app-server bridge instead: it does not run the
+  Claude SDK or a Monitor tool, but it can turn incoming magi messages into
+  Codex app-server turns for the current thread.
 
 ## SSH
 

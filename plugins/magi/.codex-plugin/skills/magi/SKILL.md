@@ -68,7 +68,8 @@ magi config set identity.active_team <team>   # join does not set the active tea
 
 - The autonomous auto-reply bridge (the `/magi-system` command and `magi-agent`
   skill) is a **Claude Code** feature, built on the Claude Agent SDK; there is
-  no Codex equivalent. From Codex, drive magi manually with the commands above.
+  no Codex SDK auto-reply equivalent. Codex live delivery is handled by the
+  Codex app-server bridge described below.
 - The ephemeral session-agent lifecycle is wired to Codex SessionStart,
   UserPromptSubmit, and SessionEnd hooks. When Redis is reachable and an active
   team is set, Codex automatically runs `magi agent spawn --type codex` for the
@@ -81,3 +82,11 @@ magi config set identity.active_team <team>   # join does not set the active tea
   the recorded agent for cleanup with a 1s, 2s, then 4s nonblocking backoff; the
   next reachable hook run despawns it and clears the stale record. Disable
   spawning with `MAGI_CODEX_EPHEMERAL=0`.
+- SessionStart also launches `magi codex bridge --thread <session-id>` unless
+  `MAGI_CODEX_APP_SERVER_BRIDGE=0`. The bridge subscribes to Redis Pub/Sub for
+  this session agent, consumes unread inbox messages, and sends each
+  `<sender>-><recipient>: message` line to the Codex app-server with
+  `turn/start`. If Codex rejects the new turn because another turn is active,
+  the bridge falls back to `thread/inject_items` so the message is still present
+  in model-visible thread history. Set `MAGI_CODEX_CLI` when the desired Codex
+  CLI is not the first `codex` on PATH.

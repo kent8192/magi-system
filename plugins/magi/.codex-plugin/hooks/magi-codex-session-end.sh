@@ -27,6 +27,7 @@ safe_key() { printf '%s' "${1:-}" | tr -cd 'A-Za-z0-9._-' ; }
 STATE_DIR="${MAGI_CODEX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/magi-codex}"
 SESSIONS_DIR="$STATE_DIR/sessions"
 CURRENT_DIR="$STATE_DIR/current"
+BRIDGES_DIR="$STATE_DIR/bridges"
 SESSION_ID="$(json_string session_id)"
 if [ -z "$SESSION_ID" ]; then
   SESSION_ID="${CODEX_THREAD_ID:-${CODEX_SESSION_ID:-}}"
@@ -35,6 +36,15 @@ PROJECT_CWD="$(json_string cwd)"
 [ -n "$PROJECT_CWD" ] || PROJECT_CWD="${PWD:-}"
 
 [ -n "$SESSION_ID" ] || exit 0
+bridge_pid_file="$BRIDGES_DIR/$(safe_key "$SESSION_ID").pid"
+if [ -f "$bridge_pid_file" ]; then
+  bridge_pid="$(cat "$bridge_pid_file" 2>/dev/null || true)"
+  if [ -n "$bridge_pid" ]; then
+    kill "$bridge_pid" 2>/dev/null || true
+  fi
+  rm -f "$bridge_pid_file" 2>/dev/null || true
+fi
+
 session_file="$SESSIONS_DIR/$(safe_key "$SESSION_ID").agent"
 [ -f "$session_file" ] || exit 0
 

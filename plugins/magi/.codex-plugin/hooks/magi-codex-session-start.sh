@@ -6,6 +6,7 @@
 # session-scoped Codex agent (`magi agent spawn --type codex`) and emits a
 # concise SessionStart context line.
 # Disable the lifecycle with MAGI_CODEX_EPHEMERAL=0.
+# Disable app-server live injection with MAGI_CODEX_APP_SERVER_BRIDGE=0.
 set -uo pipefail
 
 HOOK_INPUT="$(cat 2>/dev/null || true)"
@@ -40,6 +41,7 @@ redis_reachable() { "$MAGI" redis status >/dev/null 2>&1; }
 STATE_DIR="${MAGI_CODEX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/magi-codex}"
 SESSIONS_DIR="$STATE_DIR/sessions"
 CURRENT_DIR="$STATE_DIR/current"
+BRIDGES_DIR="$STATE_DIR/bridges"
 SESSION_ID="$(json_string session_id)"
 if [ -z "$SESSION_ID" ]; then
   SESSION_ID="${CODEX_THREAD_ID:-${CODEX_SESSION_ID:-}}"
@@ -103,6 +105,42 @@ if [ -n "$session_file" ] && [ "$redis_state" = "reachable" ]; then
   rm -f "${session_file%.agent}.health" 2>/dev/null || true
 fi
 
-ctx="magi messaging available. Redis: ${redis_state}; agent: ${agent:-unset}; team: ${team:-unset}. Use the magi CLI for messaging (send/inbox/history/team); do not read or edit ~/.magi directly."
+bridge_on() {
+  case "$(printf '%s' "${MAGI_CODEX_APP_SERVER_BRIDGE:-1}" | tr '[:upper:]' '[:lower:]')" in
+    0 | false | no | off) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+bridge_running() {
+  [ -n "${1:-}" ] && [ -f "$1" ] || return 1
+  local pid
+  pid="$(cat "$1" 2>/dev/null || true)"
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+bridge_state="stopped"
+if bridge_on && [ "$redis_state" = "reachable" ] && [ -n "$agent" ] && [ -n "$team" ] \
+  && [ -n "$SESSION_ID" ]; then
+  bridge_pid_file="$BRIDGES_DIR/$(safe_key "$SESSION_ID").pid"
+  bridge_log_file="$BRIDGES_DIR/$(safe_key "$SESSION_ID").log"
+  if bridge_running "$bridge_pid_file"; then
+    bridge_state="running"
+  else
+    mkdir -p "$BRIDGES_DIR" 2>/dev/null || true
+    MAGI_SESSION_ID="$SESSION_ID" CODEX_THREAD_ID="$SESSION_ID" CODEX_SESSION_ID="$SESSION_ID" \
+      MAGI_CODEX_STATE_DIR="$STATE_DIR" \
+      "$MAGI" codex bridge --thread "$SESSION_ID" --cwd "$PROJECT_CWD" \
+      --codex "${MAGI_CODEX_CLI:-codex}" \
+      >>"$bridge_log_file" 2>&1 &
+    bridge_pid="$!"
+    printf '%s\n' "$bridge_pid" >"$bridge_pid_file" 2>/dev/null || true
+    bridge_state="starting"
+  fi
+elif ! bridge_on; then
+  bridge_state="disabled"
+fi
+
+ctx="magi messaging available. Redis: ${redis_state}; agent: ${agent:-unset}; team: ${team:-unset}; codex app-server bridge: ${bridge_state}. Use the magi CLI for messaging (send/inbox/history/team); do not read or edit ~/.magi directly."
 printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$ctx"
 exit 0

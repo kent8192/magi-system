@@ -18,8 +18,8 @@
 
 use clap::Parser;
 use magi::cli::{
-    AgentCommand, Cli, Command, ConfigCommand, InviteCommand, RedisCommand, SshCommand,
-    TeamCommand, WatchFormat,
+    AgentCommand, Cli, CodexCommand, Command, ConfigCommand, InviteCommand, RedisCommand,
+    SshCommand, TeamCommand, WatchFormat,
 };
 
 #[test]
@@ -319,6 +319,47 @@ fn rejects_invalid_watch_format() {
     // Only documented formats are accepted by `WatchFormat`; any other value must fail.
     let error = Cli::try_parse_from(["magi", "watch", "--format", "xml"]);
     assert!(error.is_err());
+}
+
+#[test]
+fn parses_codex_bridge_defaults() {
+    let cli = Cli::try_parse_from(["magi", "codex", "bridge"]).expect("parse");
+    let Some(Command::Codex {
+        command: CodexCommand::Bridge { thread, cwd, codex },
+    }) = cli.command
+    else {
+        panic!("expected codex bridge");
+    };
+
+    assert_eq!(thread, None);
+    assert_eq!(cwd, None);
+    assert_eq!(codex, "codex");
+}
+
+#[test]
+fn parses_codex_bridge_overrides() {
+    let cli = Cli::try_parse_from([
+        "magi",
+        "codex",
+        "bridge",
+        "--thread",
+        "thread-123",
+        "--cwd",
+        "/tmp/project",
+        "--codex",
+        "/tmp/codex",
+    ])
+    .expect("parse");
+    let Some(Command::Codex {
+        command: CodexCommand::Bridge { thread, cwd, codex },
+    }) = cli.command
+    else {
+        panic!("expected codex bridge");
+    };
+
+    assert_eq!(thread.as_deref(), Some("thread-123"));
+    assert_eq!(cwd.as_deref(), Some(std::path::Path::new("/tmp/project")));
+    assert_eq!(codex, "/tmp/codex");
 }
 
 #[test]
