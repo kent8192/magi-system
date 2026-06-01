@@ -31,6 +31,33 @@ builds magi from that checkout, and places the binary at:
 
 Configuration and managed Redis state are stored under `~/.magi`.
 
+### Codex runtime requirements
+
+The Codex plugin and live app-server bridge are currently verified with Codex
+Standalone. The Claude Code plugin and bridge are documented, but they have not
+yet been verified against the current Claude Code runtime.
+
+The documented Codex workflow requires Docker. The general `magi` Redis
+lifecycle can fall back to a local `redis-server`, but Codex Standalone,
+managed Redis, and Dev Container usage are tested against the Docker-backed
+path.
+
+Codex hook execution must be enabled for the plugin to create and clean up the
+session-scoped magi agent, inject prompt context, and start the app-server
+bridge. Ensure the Codex runtime has hook support enabled, including
+`hooks` and `plugin_hooks` feature flags when your Codex build exposes them:
+
+```toml
+[features]
+hooks = true
+plugin_hooks = true
+```
+
+This repository does not currently ship a `.devcontainer/` definition. If you
+run magi from your own Dev Container, make the Docker daemon available inside
+the container, install or mount Codex Standalone there, and keep the Codex
+configuration that enables `hooks` and `plugin_hooks` visible to that runtime.
+
 Override the bootstrap source with `MAGI_BOOTSTRAP_REPO_URL`:
 
 ```bash
