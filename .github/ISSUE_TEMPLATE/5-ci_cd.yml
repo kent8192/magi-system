@@ -43,5 +43,5 @@ body:
       label: Local Results
       description: Include local command results if applicable.
       placeholder: |
-        bash -n scripts/*.sh install.sh setup.sh uninstall.sh
+        bash -n scripts/*.sh install.sh uninstall.sh
         bats tests/

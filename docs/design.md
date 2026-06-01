@@ -21,7 +21,11 @@
   basis (skipped when the CLI is absent). Re-running `install.sh` refreshes the
   marketplace, updates an already-installed Claude Code plugin or installs it
   when absent, and re-adds the Codex plugin from the current marketplace
-  snapshot.
+  snapshot. When `install.sh` is run outside a checkout, it bootstraps from
+  `MAGI_BOOTSTRAP_REPO_URL` (defaulting to
+  `https://github.com/kent8192/magi-system.git`) and delegates to that checkout,
+  with `MAGI_PLUGIN_REPO` defaulting to the durable `kent8192/magi-system`
+  plugin source instead of the temporary clone path.
 - Redis lifecycle: Docker first, `redis-server` fallback
 - Durable messaging: Redis Streams
 - Wakeups: Redis Pub/Sub
