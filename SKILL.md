@@ -26,6 +26,10 @@ Use the Rust CLI. Do not read or edit `~/.magi` files directly.
 
 The same binary is installed at `~/.local/bin/magi`.
 
+Session hooks remove ephemeral agents on normal session end. If Redis health
+checks fail repeatedly, hooks record nonblocking exponential backoff state and
+despawn the stale agent after Redis becomes reachable again.
+
 ## Storage
 
 - Config and local state: `~/.magi`

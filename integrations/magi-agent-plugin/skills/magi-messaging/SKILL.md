@@ -74,7 +74,9 @@ magi agent despawn [--team <t>] [--name <n>]  # remove it again
 → `casper`). The Claude Code session hooks call these automatically (spawn on
 start, despawn on end) and record the session identity so communication commands
 speak as that session's agent; run them by hand only for manual lifecycle
-control.
+control. Repeated Redis health-check failures are tracked with nonblocking
+exponential backoff, and the next reachable hook run despawns the stale recorded
+agent.
 
 ## When to hand off to the bridge
 

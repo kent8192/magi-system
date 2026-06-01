@@ -109,6 +109,13 @@ state, and session record status. If Codex was updated after a session started
 and SessionStart did not create a record, UserPromptSubmit performs the same
 spawn-and-record step before injecting context.
 
+Hooks also keep a small `<session>.health` sidecar next to each recorded
+ephemeral agent. Failed Redis health checks are counted without sleeping in the
+hook path: the next due check is scheduled with a 1s, 2s, then 4s backoff. After
+three due consecutive failures the sidecar marks cleanup pending; the next hook
+run that can reach Redis removes the agent through `magi agent despawn` and
+clears the session record.
+
 ## Plugin Parity (Codex vs Claude Code)
 
 The messaging command surface is intentionally mirrored across the Codex `magi`
