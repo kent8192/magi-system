@@ -99,6 +99,9 @@ if [ -n "$agent" ] && [ -n "$team" ] && [ -n "$current_file" ]; then
   mkdir -p "$CURRENT_DIR" 2>/dev/null || true
   printf '%s\n%s\n' "$agent" "$team" >"$current_file" 2>/dev/null || true
 fi
+if [ -n "$session_file" ] && [ "$redis_state" = "reachable" ]; then
+  rm -f "${session_file%.agent}.health" 2>/dev/null || true
+fi
 
 ctx="magi messaging available. Redis: ${redis_state}; agent: ${agent:-unset}; team: ${team:-unset}. Use the magi CLI for messaging (send/inbox/history/team); do not read or edit ~/.magi directly."
 printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$ctx"

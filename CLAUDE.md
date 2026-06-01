@@ -129,6 +129,10 @@ and the binary is installed at `~/.agents/skills/magi/bin/magi` and
   by specific intent.
 - Pull Requests may be opened, but every Pull Request MUST target the fork
   (`kent8192/magi`) as its base repository (see Upstream Repository Protection).
+- When the user explicitly asks to create a PR, publish the change end to end:
+  verify the intended diff, commit scoped changes, push the branch to `origin`,
+  and create the fork-targeted Pull Request. Do not stop after implementation or
+  leave the user to run the commit/push/PR steps manually.
 - Never use destructive Git operations such as `git reset --hard`, force-push,
   or branch deletion without explicit authorization.
 - The Upstream Repository Protection rules below remain in force at all times and
