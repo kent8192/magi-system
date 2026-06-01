@@ -1,12 +1,19 @@
-//! Tests for Codex app-server bridge request construction and proxy fallback.
+//! Tests for Codex app-server bridge request construction and socket delivery.
 
-use std::io::Write;
+use std::path::PathBuf;
 
+use base64::prelude::*;
 use magi::codex_bridge::{
     bridge_status_error_message, bridge_status_state_for_error, build_inject_items_request,
-    build_turn_start_request, format_context_line, submit_to_codex, submit_to_codex_with_socket,
+    build_turn_start_request, format_context_line, submit_to_codex_with_socket,
 };
-use tempfile::NamedTempFile;
+use serde_json::{json, Value};
+use sha1::{Digest, Sha1};
+use tempfile::TempDir;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{UnixListener, UnixStream};
+
+const WEBSOCKET_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 #[test]
 fn formats_context_line_for_codex_turns() {
@@ -65,9 +72,9 @@ fn builds_user_message_fallback_injection_request() {
 }
 
 #[test]
-fn proxy_startup_failures_are_reported_as_retrying_bridge_status() {
+fn websocket_delivery_failures_are_reported_as_retrying_bridge_status() {
     let error = magi::error::MagiError::CommandFailed(
-        "codex app-server proxy closed before JSON-RPC response".to_string(),
+        "codex app-server websocket closed before JSON-RPC response".to_string(),
     );
 
     assert_eq!(bridge_status_state_for_error(&error), "retrying");
@@ -86,65 +93,13 @@ fn missing_control_socket_is_reported_as_unsupported_bridge_status() {
     assert!(message.contains("stdio://"));
 }
 
-#[test]
-fn proxy_startup_status_mentions_default_app_server_socket() {
-    let temp_home = tempfile::tempdir().expect("temp home");
-    let previous_home = std::env::var_os("HOME");
-    std::env::set_var("HOME", temp_home.path());
-    let error = magi::error::MagiError::CommandFailed(
-        "codex app-server proxy closed before JSON-RPC response".to_string(),
-    );
-
-    let message = bridge_status_error_message(&error);
-
-    assert!(message.contains("app-server-control/app-server-control.sock"));
-    assert!(message.contains(temp_home.path().to_str().unwrap()));
-    if let Some(previous_home) = previous_home {
-        std::env::set_var("HOME", previous_home);
-    } else {
-        std::env::remove_var("HOME");
-    }
-}
-
 #[tokio::test]
 async fn submit_to_codex_falls_back_to_inject_items_when_turn_start_fails() {
-    let mut script = NamedTempFile::new().expect("temp script");
-    writeln!(
-        script,
-        r#"#!/usr/bin/env bash
-set -euo pipefail
-while IFS= read -r line; do
-  printf '%s\n' "$line" >>"$CODEX_PROXY_LOG"
-  id="$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')"
-  case "$line" in
-    *'"method":"turn/start"'*)
-      printf '{{"id":%s,"error":{{"message":"active turn"}}}}\n' "$id"
-      ;;
-    *)
-      printf '{{"id":%s,"result":{{}}}}\n' "$id"
-      ;;
-  esac
-done
-"#
-    )
-    .expect("write script");
-    let script = script.into_temp_path();
-    std::fs::set_permissions(&script, {
-        let mut permissions = std::fs::metadata(&script).unwrap().permissions();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            permissions.set_mode(0o755);
-        }
-        permissions
-    })
-    .expect("chmod script");
+    let (_temp, socket, server) = spawn_fake_app_server(5, true).await;
 
-    let log = NamedTempFile::new().expect("temp log");
-    std::env::set_var("CODEX_PROXY_LOG", log.path());
-
-    submit_to_codex(
-        script.to_str().unwrap(),
+    submit_to_codex_with_socket(
+        "unused-codex",
+        &socket,
         "thread-123",
         Some("/tmp/project"),
         "1-0",
@@ -153,47 +108,31 @@ done
     .await
     .expect("fallback injection succeeds");
 
-    let calls = std::fs::read_to_string(log.path()).expect("read proxy log");
-    assert!(calls.contains(r#""method":"initialize""#));
-    assert!(calls.contains(r#""method":"thread/resume""#));
-    assert!(calls.contains(r#""method":"turn/start""#));
-    assert!(calls.contains(r#""method":"thread/inject_items""#));
+    let calls = server.await.expect("server task succeeds");
+    let methods: Vec<_> = calls
+        .iter()
+        .filter_map(|call| call["method"].as_str())
+        .collect();
+    assert_eq!(
+        methods,
+        [
+            "initialize",
+            "initialized",
+            "thread/resume",
+            "turn/start",
+            "thread/inject_items"
+        ]
+    );
+    assert_eq!(calls[0]["params"]["capabilities"], Value::Null);
+    assert!(calls[2]["params"].get("excludeTurns").is_none());
 }
 
 #[tokio::test]
-async fn submit_to_codex_passes_explicit_socket_to_proxy() {
-    let mut script = NamedTempFile::new().expect("temp script");
-    writeln!(
-        script,
-        r#"#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' "$*" >"$CODEX_PROXY_ARGS"
-while IFS= read -r line; do
-  id="$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')"
-  printf '{{"id":%s,"result":{{}}}}\n' "$id"
-done
-"#
-    )
-    .expect("write script");
-    let script = script.into_temp_path();
-    std::fs::set_permissions(&script, {
-        let mut permissions = std::fs::metadata(&script).unwrap().permissions();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            permissions.set_mode(0o755);
-        }
-        permissions
-    })
-    .expect("chmod script");
-
-    let args = NamedTempFile::new().expect("temp args");
-    std::env::set_var("CODEX_PROXY_ARGS", args.path());
-    let socket_dir = tempfile::tempdir().expect("socket dir");
-    let socket = socket_dir.path().join("app-server.sock");
+async fn submit_to_codex_uses_explicit_unix_websocket_socket() {
+    let (_temp, socket, server) = spawn_fake_app_server(4, false).await;
 
     submit_to_codex_with_socket(
-        script.to_str().unwrap(),
+        "unused-codex",
         &socket,
         "thread-123",
         Some("/tmp/project"),
@@ -203,9 +142,123 @@ done
     .await
     .expect("delivery succeeds");
 
-    let called_args = std::fs::read_to_string(args.path()).expect("read args");
-    assert_eq!(
-        called_args.trim(),
-        format!("app-server proxy --sock {}", socket.display())
+    let calls = server.await.expect("server task succeeds");
+    assert_eq!(calls[0]["method"], "initialize");
+    assert_eq!(calls[1]["method"], "initialized");
+    assert_eq!(calls[2]["method"], "thread/resume");
+    assert_eq!(calls[3]["method"], "turn/start");
+}
+
+async fn spawn_fake_app_server(
+    expected_messages: usize,
+    fail_turn_start: bool,
+) -> (TempDir, PathBuf, tokio::task::JoinHandle<Vec<Value>>) {
+    let temp = tempfile::tempdir().expect("socket dir");
+    let socket = temp.path().join("app-server.sock");
+    let listener = UnixListener::bind(&socket).expect("bind fake app-server socket");
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.expect("accept connection");
+        accept_websocket_handshake(&mut stream).await;
+        let mut calls = Vec::new();
+        while calls.len() < expected_messages {
+            let message = read_client_json_frame(&mut stream).await;
+            let method = message["method"].as_str().unwrap_or_default().to_string();
+            if let Some(id) = message.get("id").and_then(Value::as_u64) {
+                let response = if fail_turn_start && method == "turn/start" {
+                    json!({ "id": id, "error": { "message": "active turn" } })
+                } else {
+                    json!({ "id": id, "result": {} })
+                };
+                write_server_json_frame(&mut stream, &response).await;
+            }
+            calls.push(message);
+        }
+        calls
+    });
+    (temp, socket, server)
+}
+
+async fn accept_websocket_handshake(stream: &mut UnixStream) {
+    let mut request = Vec::new();
+    let mut byte = [0u8; 1];
+    while !request.ends_with(b"\r\n\r\n") {
+        stream.read_exact(&mut byte).await.expect("read handshake");
+        request.push(byte[0]);
+    }
+    let request = String::from_utf8(request).expect("utf8 handshake");
+    let key = request
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("sec-websocket-key")
+                .then(|| value.trim())
+        })
+        .expect("sec-websocket-key");
+    let accept = websocket_accept(key);
+    let response = format!(
+        "HTTP/1.1 101 Switching Protocols\r\n\
+         Upgrade: websocket\r\n\
+         Connection: Upgrade\r\n\
+         Sec-WebSocket-Accept: {accept}\r\n\
+         \r\n"
     );
+    stream
+        .write_all(response.as_bytes())
+        .await
+        .expect("write handshake");
+}
+
+fn websocket_accept(key: &str) -> String {
+    let mut hasher = Sha1::new();
+    hasher.update(key.as_bytes());
+    hasher.update(WEBSOCKET_GUID.as_bytes());
+    BASE64_STANDARD.encode(hasher.finalize())
+}
+
+async fn read_client_json_frame(stream: &mut UnixStream) -> Value {
+    let mut header = [0u8; 2];
+    stream
+        .read_exact(&mut header)
+        .await
+        .expect("read frame header");
+    assert_eq!(header[0] & 0x80, 0x80);
+    assert_eq!(header[0] & 0x0F, 0x1);
+    assert_eq!(header[1] & 0x80, 0x80);
+
+    let mut length = u64::from(header[1] & 0x7F);
+    if length == 126 {
+        let mut extended = [0u8; 2];
+        stream.read_exact(&mut extended).await.expect("read length");
+        length = u64::from(u16::from_be_bytes(extended));
+    } else if length == 127 {
+        let mut extended = [0u8; 8];
+        stream.read_exact(&mut extended).await.expect("read length");
+        length = u64::from_be_bytes(extended);
+    }
+
+    let mut mask = [0u8; 4];
+    stream.read_exact(&mut mask).await.expect("read mask");
+    let mut payload = vec![0u8; length as usize];
+    stream.read_exact(&mut payload).await.expect("read payload");
+    for (index, byte) in payload.iter_mut().enumerate() {
+        *byte ^= mask[index % 4];
+    }
+    serde_json::from_slice(&payload).expect("json frame")
+}
+
+async fn write_server_json_frame(stream: &mut UnixStream, value: &Value) {
+    let payload = serde_json::to_vec(value).expect("serialize response");
+    let mut frame = Vec::new();
+    frame.push(0x81);
+    if payload.len() <= 125 {
+        frame.push(payload.len() as u8);
+    } else if payload.len() <= u16::MAX as usize {
+        frame.push(126);
+        frame.extend_from_slice(&(payload.len() as u16).to_be_bytes());
+    } else {
+        frame.push(127);
+        frame.extend_from_slice(&(payload.len() as u64).to_be_bytes());
+    }
+    frame.extend_from_slice(&payload);
+    stream.write_all(&frame).await.expect("write response");
 }

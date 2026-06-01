@@ -2,26 +2,35 @@
 //!
 //! The bridge tails Redis Pub/Sub for the active magi session agent. Each
 //! delivered inbox batch is converted into compact context lines and submitted
-//! to the Codex app-server through `codex app-server proxy --sock <path>`. A new
-//! Codex turn is started for normal idle sessions; if the app-server rejects the
-//! turn, the bridge falls back to `thread/inject_items` so the message is still
-//! persisted into model-visible thread history.
+//! to the Codex app-server over the Unix control socket's WebSocket transport. A
+//! new Codex turn is started for normal idle sessions; if the app-server rejects
+//! the turn, the bridge falls back to `thread/inject_items` so the message is
+//! still persisted into model-visible thread history.
 
 use std::future::Future;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use base64::prelude::*;
 use futures_util::StreamExt;
 use serde_json::{json, Value};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, Command};
+use sha1::{Digest, Sha1};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::UnixStream;
 
 use crate::config::AppConfig;
 use crate::error::{MagiError, Result};
 use crate::messaging::{self, InboxReadMode, MessageRecord};
 use crate::model::RedisKeys;
 use crate::session_identity::{missing_session_agent_message, resolve_identity};
+
+#[cfg(not(test))]
+const CODEX_APP_SERVER_RPC_TIMEOUT: Duration = Duration::from_secs(10);
+#[cfg(test)]
+const CODEX_APP_SERVER_RPC_TIMEOUT: Duration = Duration::from_millis(100);
+const MAX_WEBSOCKET_PAYLOAD_BYTES: usize = 16 * 1024 * 1024;
+const WEBSOCKET_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 /// Runs the long-lived Codex app-server bridge.
 pub async fn run(
@@ -125,7 +134,10 @@ struct BridgeDelivery<'a> {
     socket: &'a Path,
 }
 
-async fn deliver_pending(delivery: &BridgeDelivery<'_>) -> Result<DeliveryOutcome> {
+async fn deliver_pending(
+    delivery: &BridgeDelivery<'_>,
+    status_path: Option<&Path>,
+) -> Result<DeliveryOutcome> {
     ensure_codex_app_server_socket(delivery.socket)?;
     let messages = messaging::read_inbox_with_url(
         delivery.url,
@@ -134,6 +146,9 @@ async fn deliver_pending(delivery: &BridgeDelivery<'_>) -> Result<DeliveryOutcom
         InboxReadMode::Peek,
     )
     .await?;
+    if !messages.is_empty() {
+        write_bridge_status(status_path, "delivering", None);
+    }
     let progress = deliver_messages_with_submitter(
         messages,
         delivery.thread_id,
@@ -223,7 +238,7 @@ where
 }
 
 async fn deliver_pending_and_record(delivery: &BridgeDelivery<'_>, status_path: Option<&Path>) {
-    match deliver_pending(delivery).await {
+    match deliver_pending(delivery, status_path).await {
         Ok(outcome) => record_delivery_outcome(status_path, outcome),
         Err(error) => {
             let state = bridge_status_state_for_error(&error);
@@ -238,7 +253,10 @@ fn record_delivery_outcome(status_path: Option<&Path>, outcome: DeliveryOutcome)
     match outcome {
         DeliveryOutcome::Delivered => write_bridge_status(status_path, "running", None),
         DeliveryOutcome::NoPending => {
-            if current_bridge_status_state(status_path).is_none() {
+            if matches!(
+                current_bridge_status_state(status_path).as_deref(),
+                None | Some("starting") | Some("delivering")
+            ) {
                 write_bridge_status(status_path, "running", None);
             }
         }
@@ -260,7 +278,7 @@ pub fn bridge_status_error_message(error: &MagiError) -> String {
     }
 
     let message = error.to_string();
-    if message.contains("codex app-server proxy closed before JSON-RPC response") {
+    if message.contains("codex app-server websocket closed before JSON-RPC response") {
         format!(
             "{message}; check codex app-server control socket at {}",
             default_codex_app_server_socket().display()
@@ -400,33 +418,20 @@ pub async fn submit_to_codex(
 
 /// Submits a context line to the Codex app-server through a specific socket.
 pub async fn submit_to_codex_with_socket(
-    codex: &str,
+    _codex: &str,
     socket: &Path,
     thread_id: &str,
     cwd: Option<&str>,
     message_id: &str,
     text: &str,
 ) -> Result<()> {
-    let mut child = spawn_codex_proxy(codex, socket)?;
-    let stdin = child
-        .stdin
-        .take()
-        .ok_or_else(|| MagiError::CommandFailed("codex proxy stdin unavailable".to_string()))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| MagiError::CommandFailed("codex proxy stdout unavailable".to_string()))?;
-
-    let mut client = JsonRpcClient {
-        stdin,
-        stdout: BufReader::new(stdout),
-        next_id: 1,
-    };
+    let mut client = WebSocketJsonRpcClient::connect(socket).await?;
 
     client
         .request(json!({
             "method": "initialize",
             "params": {
+                "capabilities": null,
                 "clientInfo": {
                     "name": "magi-codex-bridge",
                     "title": "magi Codex Bridge",
@@ -436,11 +441,15 @@ pub async fn submit_to_codex_with_socket(
         }))
         .await?;
     client
+        .notification(json!({
+            "method": "initialized"
+        }))
+        .await?;
+    client
         .request(json!({
             "method": "thread/resume",
             "params": {
-                "threadId": thread_id,
-                "excludeTurns": true
+                "threadId": thread_id
             }
         }))
         .await?;
@@ -455,27 +464,7 @@ pub async fn submit_to_codex_with_socket(
         })?;
     }
 
-    drop(client);
-    let status = child.wait().await?;
-    if !status.success() {
-        return Err(MagiError::CommandFailed(format!(
-            "codex app-server proxy exited with {status}"
-        )));
-    }
     Ok(())
-}
-
-fn spawn_codex_proxy(codex: &str, socket: &Path) -> Result<Child> {
-    Command::new(codex)
-        .arg("app-server")
-        .arg("proxy")
-        .arg("--sock")
-        .arg(socket)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(MagiError::Io)
 }
 
 /// Builds the JSON-RPC envelope for starting a Codex turn.
@@ -515,53 +504,343 @@ pub fn build_inject_items_request(thread_id: &str, message_id: &str, text: &str)
     })
 }
 
-struct JsonRpcClient {
-    stdin: tokio::process::ChildStdin,
-    stdout: BufReader<tokio::process::ChildStdout>,
+struct WebSocketJsonRpcClient {
+    stream: UnixStream,
     next_id: u64,
 }
 
-impl JsonRpcClient {
+impl WebSocketJsonRpcClient {
+    async fn connect(socket: &Path) -> Result<Self> {
+        let mut stream = timeout_command(
+            "codex app-server websocket connect",
+            UnixStream::connect(socket),
+        )
+        .await?;
+        websocket_handshake(&mut stream).await?;
+        Ok(Self { stream, next_id: 1 })
+    }
+
     async fn request(&mut self, mut request: Value) -> Result<Value> {
         let id = self.next_id;
         self.next_id += 1;
         request["id"] = json!(id);
-        let line = serde_json::to_string(&request).map_err(|error| {
-            MagiError::CommandFailed(format!("failed to encode codex JSON-RPC request: {error}"))
-        })?;
-        self.stdin.write_all(line.as_bytes()).await?;
-        self.stdin.write_all(b"\n").await?;
-        self.stdin.flush().await?;
+        let method = request
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_string();
+        timeout_command(
+            &format!("codex app-server request `{method}`"),
+            self.request_inner(request, id, &method),
+        )
+        .await
+    }
 
+    async fn notification(&mut self, notification: Value) -> Result<()> {
+        let method = notification
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_string();
+        timeout_command(
+            &format!("codex app-server notification `{method}`"),
+            self.send_json(&notification),
+        )
+        .await
+    }
+
+    async fn request_inner(&mut self, request: Value, id: u64, method: &str) -> Result<Value> {
+        self.send_json(&request).await?;
         loop {
-            let mut response = String::new();
-            let read = self.stdout.read_line(&mut response).await?;
-            if read == 0 {
-                return Err(MagiError::CommandFailed(
-                    "codex app-server proxy closed before JSON-RPC response".to_string(),
-                ));
-            }
-            let value: Value = serde_json::from_str(response.trim()).map_err(|error| {
-                MagiError::CommandFailed(format!(
-                    "failed to decode codex JSON-RPC response `{}`: {error}",
-                    response.trim()
-                ))
-            })?;
-            if value.get("id").and_then(Value::as_u64) != Some(id) {
+            let message = self.read_json_message().await?;
+            if message.get("id").and_then(Value::as_u64) != Some(id) {
                 continue;
             }
-            if let Some(error) = value.get("error") {
+            if let Some(error) = message.get("error") {
                 return Err(MagiError::CommandFailed(format!(
-                    "codex app-server request `{}` failed: {error}",
-                    request
-                        .get("method")
-                        .and_then(Value::as_str)
-                        .unwrap_or("unknown")
+                    "codex app-server request `{method}` failed: {error}"
                 )));
             }
-            return Ok(value.get("result").cloned().unwrap_or_else(|| json!({})));
+            return Ok(message.get("result").cloned().unwrap_or_else(|| json!({})));
         }
     }
+
+    async fn send_json(&mut self, value: &Value) -> Result<()> {
+        let payload = serde_json::to_vec(value).map_err(|error| {
+            MagiError::CommandFailed(format!("failed to encode codex JSON-RPC message: {error}"))
+        })?;
+        write_websocket_frame(&mut self.stream, WebSocketOpcode::Text, &payload).await
+    }
+
+    async fn read_json_message(&mut self) -> Result<Value> {
+        loop {
+            let frame = read_websocket_frame(&mut self.stream).await?;
+            match frame.opcode {
+                WebSocketOpcode::Text => {
+                    return serde_json::from_slice(&frame.payload).map_err(|error| {
+                        MagiError::CommandFailed(format!(
+                            "failed to decode codex JSON-RPC websocket message: {error}"
+                        ))
+                    });
+                }
+                WebSocketOpcode::Ping => {
+                    write_websocket_frame(&mut self.stream, WebSocketOpcode::Pong, &frame.payload)
+                        .await?;
+                }
+                WebSocketOpcode::Pong => {}
+                WebSocketOpcode::Close => {
+                    return Err(MagiError::CommandFailed(
+                        "codex app-server websocket closed before JSON-RPC response".to_string(),
+                    ));
+                }
+                WebSocketOpcode::Binary | WebSocketOpcode::Continuation => {
+                    return Err(MagiError::CommandFailed(format!(
+                        "codex app-server sent unsupported websocket opcode {}",
+                        frame.opcode.code()
+                    )));
+                }
+            }
+        }
+    }
+}
+
+async fn timeout_command<T, E, Fut>(operation: &str, future: Fut) -> Result<T>
+where
+    E: Into<MagiError>,
+    Fut: Future<Output = std::result::Result<T, E>>,
+{
+    match tokio::time::timeout(CODEX_APP_SERVER_RPC_TIMEOUT, future).await {
+        Ok(result) => result.map_err(Into::into),
+        Err(_) => Err(MagiError::CommandFailed(format!(
+            "{operation} timed out after {}s",
+            CODEX_APP_SERVER_RPC_TIMEOUT.as_secs()
+        ))),
+    }
+}
+
+async fn websocket_handshake(stream: &mut UnixStream) -> Result<()> {
+    timeout_command("codex app-server websocket handshake", async {
+        let key = websocket_key();
+        let request = format!(
+            "GET / HTTP/1.1\r\n\
+             Host: localhost\r\n\
+             Upgrade: websocket\r\n\
+             Connection: Upgrade\r\n\
+             Sec-WebSocket-Version: 13\r\n\
+             Sec-WebSocket-Key: {key}\r\n\
+             \r\n"
+        );
+        stream.write_all(request.as_bytes()).await?;
+        stream.flush().await?;
+
+        let response = read_http_upgrade_response(stream).await?;
+        validate_websocket_upgrade_response(&response, &key)
+    })
+    .await
+}
+
+fn websocket_key() -> String {
+    let nonce: [u8; 16] = rand::random();
+    BASE64_STANDARD.encode(nonce)
+}
+
+async fn read_http_upgrade_response(stream: &mut UnixStream) -> Result<String> {
+    let mut response = Vec::new();
+    let mut byte = [0u8; 1];
+    while response.len() < 16 * 1024 {
+        let read = stream.read(&mut byte).await?;
+        if read == 0 {
+            return Err(MagiError::CommandFailed(
+                "codex app-server closed during websocket handshake".to_string(),
+            ));
+        }
+        response.push(byte[0]);
+        if response.ends_with(b"\r\n\r\n") {
+            return String::from_utf8(response).map_err(|error| {
+                MagiError::CommandFailed(format!(
+                    "codex app-server sent non-UTF-8 websocket handshake response: {error}"
+                ))
+            });
+        }
+    }
+    Err(MagiError::CommandFailed(
+        "codex app-server websocket handshake response exceeded 16 KiB".to_string(),
+    ))
+}
+
+fn validate_websocket_upgrade_response(response: &str, key: &str) -> Result<()> {
+    let mut lines = response.split("\r\n");
+    let status = lines.next().unwrap_or_default();
+    if !status.contains(" 101 ") {
+        return Err(MagiError::CommandFailed(format!(
+            "codex app-server websocket handshake failed: {status}"
+        )));
+    }
+
+    let upgrade = http_header(response, "upgrade")
+        .map(|value| value.eq_ignore_ascii_case("websocket"))
+        .unwrap_or(false);
+    let connection = http_header(response, "connection")
+        .map(|value| {
+            value
+                .split(',')
+                .any(|part| part.trim().eq_ignore_ascii_case("upgrade"))
+        })
+        .unwrap_or(false);
+    let accept = http_header(response, "sec-websocket-accept")
+        .map(|value| value == websocket_accept(key))
+        .unwrap_or(false);
+
+    if !(upgrade && connection && accept) {
+        return Err(MagiError::CommandFailed(
+            "codex app-server websocket handshake response was missing required upgrade headers"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn http_header<'a>(response: &'a str, name: &str) -> Option<&'a str> {
+    response.lines().skip(1).find_map(|line| {
+        let (header_name, value) = line.split_once(':')?;
+        header_name
+            .trim()
+            .eq_ignore_ascii_case(name)
+            .then(|| value.trim())
+    })
+}
+
+fn websocket_accept(key: &str) -> String {
+    let mut hasher = Sha1::new();
+    hasher.update(key.as_bytes());
+    hasher.update(WEBSOCKET_GUID.as_bytes());
+    BASE64_STANDARD.encode(hasher.finalize())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WebSocketOpcode {
+    Continuation,
+    Text,
+    Binary,
+    Close,
+    Ping,
+    Pong,
+}
+
+impl WebSocketOpcode {
+    fn from_code(code: u8) -> Result<Self> {
+        match code {
+            0x0 => Ok(Self::Continuation),
+            0x1 => Ok(Self::Text),
+            0x2 => Ok(Self::Binary),
+            0x8 => Ok(Self::Close),
+            0x9 => Ok(Self::Ping),
+            0xA => Ok(Self::Pong),
+            _ => Err(MagiError::CommandFailed(format!(
+                "codex app-server sent unsupported websocket opcode {code}"
+            ))),
+        }
+    }
+
+    fn code(self) -> u8 {
+        match self {
+            Self::Continuation => 0x0,
+            Self::Text => 0x1,
+            Self::Binary => 0x2,
+            Self::Close => 0x8,
+            Self::Ping => 0x9,
+            Self::Pong => 0xA,
+        }
+    }
+}
+
+struct WebSocketFrame {
+    opcode: WebSocketOpcode,
+    payload: Vec<u8>,
+}
+
+async fn write_websocket_frame(
+    stream: &mut UnixStream,
+    opcode: WebSocketOpcode,
+    payload: &[u8],
+) -> Result<()> {
+    let mut header = Vec::with_capacity(14);
+    header.push(0x80 | opcode.code());
+    if payload.len() <= 125 {
+        header.push(0x80 | payload.len() as u8);
+    } else if payload.len() <= u16::MAX as usize {
+        header.push(0x80 | 126);
+        header.extend_from_slice(&(payload.len() as u16).to_be_bytes());
+    } else {
+        header.push(0x80 | 127);
+        header.extend_from_slice(&(payload.len() as u64).to_be_bytes());
+    }
+
+    let mask: [u8; 4] = rand::random();
+    header.extend_from_slice(&mask);
+    let mut masked = Vec::with_capacity(payload.len());
+    for (index, byte) in payload.iter().enumerate() {
+        masked.push(byte ^ mask[index % 4]);
+    }
+
+    stream.write_all(&header).await?;
+    stream.write_all(&masked).await?;
+    stream.flush().await?;
+    Ok(())
+}
+
+async fn read_websocket_frame(stream: &mut UnixStream) -> Result<WebSocketFrame> {
+    let mut header = [0u8; 2];
+    stream.read_exact(&mut header).await.map_err(|error| {
+        if error.kind() == ErrorKind::UnexpectedEof {
+            MagiError::CommandFailed(
+                "codex app-server websocket closed before JSON-RPC response".to_string(),
+            )
+        } else {
+            MagiError::Io(error)
+        }
+    })?;
+
+    if header[0] & 0x80 == 0 {
+        return Err(MagiError::CommandFailed(
+            "codex app-server sent fragmented websocket frames, which are unsupported".to_string(),
+        ));
+    }
+
+    let opcode = WebSocketOpcode::from_code(header[0] & 0x0F)?;
+    let masked = header[1] & 0x80 != 0;
+    let mut length = u64::from(header[1] & 0x7F);
+    if length == 126 {
+        let mut extended = [0u8; 2];
+        stream.read_exact(&mut extended).await?;
+        length = u64::from(u16::from_be_bytes(extended));
+    } else if length == 127 {
+        let mut extended = [0u8; 8];
+        stream.read_exact(&mut extended).await?;
+        length = u64::from_be_bytes(extended);
+    }
+    if length > MAX_WEBSOCKET_PAYLOAD_BYTES as u64 {
+        return Err(MagiError::CommandFailed(format!(
+            "codex app-server websocket frame exceeded {} bytes",
+            MAX_WEBSOCKET_PAYLOAD_BYTES
+        )));
+    }
+
+    let mask = if masked {
+        let mut mask = [0u8; 4];
+        stream.read_exact(&mut mask).await?;
+        Some(mask)
+    } else {
+        None
+    };
+    let mut payload = vec![0u8; length as usize];
+    stream.read_exact(&mut payload).await?;
+    if let Some(mask) = mask {
+        for (index, byte) in payload.iter_mut().enumerate() {
+            *byte ^= mask[index % 4];
+        }
+    }
+    Ok(WebSocketFrame { opcode, payload })
 }
 
 #[cfg(test)]
@@ -602,6 +881,18 @@ mod tests {
     }
 
     #[test]
+    fn no_pending_delivery_clears_stale_delivering_status() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let status_path = temp.path().join("bridge.status");
+        write_bridge_status(Some(&status_path), "delivering", None);
+
+        record_delivery_outcome(Some(&status_path), DeliveryOutcome::NoPending);
+
+        let status = std::fs::read_to_string(status_path).expect("status");
+        assert!(status.contains("state=running"));
+    }
+
+    #[test]
     fn successful_delivery_clears_previous_retrying_status() {
         let temp = tempfile::tempdir().expect("temp dir");
         let status_path = temp.path().join("bridge.status");
@@ -616,6 +907,19 @@ mod tests {
         let status = std::fs::read_to_string(status_path).expect("status");
         assert!(status.contains("state=running"));
         assert!(status.contains("last_error=\n"));
+    }
+
+    #[tokio::test]
+    async fn app_server_rpc_timeout_is_reported_as_retrying_status() {
+        let error = timeout_command(
+            "codex app-server request `initialize`",
+            std::future::pending::<Result<()>>(),
+        )
+        .await
+        .expect_err("pending RPC should time out");
+
+        assert_eq!(bridge_status_state_for_error(&error), "retrying");
+        assert!(bridge_status_error_message(&error).contains("timed out"));
     }
 
     #[test]

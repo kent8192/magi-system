@@ -301,10 +301,10 @@ pub enum CodexCommand {
         /// Working directory to pass to new app-server turns.
         #[arg(long)]
         cwd: Option<std::path::PathBuf>,
-        /// Codex CLI executable used for `codex app-server proxy`.
+        /// Codex CLI executable used by hook-managed daemon startup.
         #[arg(long, default_value = "codex")]
         codex: String,
-        /// Codex app-server Unix control socket used by `codex app-server proxy`.
+        /// Codex app-server Unix control socket used for WebSocket delivery.
         #[arg(long)]
         socket: Option<std::path::PathBuf>,
     },
