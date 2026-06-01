@@ -22,6 +22,7 @@ Use the Rust CLI. Do not read or edit `~/.magi` files directly.
 ~/.agents/skills/magi/bin/magi inbox
 ~/.agents/skills/magi/bin/magi history [--team <team>] [--agent <agent>]
 ~/.agents/skills/magi/bin/magi watch --format line
+~/.agents/skills/magi/bin/magi codex bridge --thread <thread-id>
 ```
 
 The same binary is installed at `~/.local/bin/magi`.
@@ -29,6 +30,9 @@ The same binary is installed at `~/.local/bin/magi`.
 Session hooks remove ephemeral agents on normal session end. If Redis health
 checks fail repeatedly, hooks record nonblocking exponential backoff state and
 despawn the stale agent after Redis becomes reachable again.
+
+Codex SessionStart hooks also launch `magi codex bridge` by default so incoming
+Redis Pub/Sub messages become Codex app-server turns for the current thread.
 
 ## Storage
 

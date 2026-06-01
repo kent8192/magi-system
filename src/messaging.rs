@@ -291,6 +291,25 @@ pub async fn read_inbox_with_url(
     Ok(messages)
 }
 
+/// Advance an agent's inbox cursor to a specific Redis Stream id.
+///
+/// This is useful for delivery bridges that must hand messages to an external
+/// runtime before acknowledging them. The caller can `Peek`, perform the
+/// external delivery, and then advance exactly to the last successfully
+/// delivered stream id.
+pub async fn advance_inbox_cursor_with_url(
+    url: &str,
+    team: &str,
+    agent: &str,
+    cursor: &str,
+) -> Result<()> {
+    let keys = RedisKeys::new(team);
+    let mut connection = redis_client::connect(url).await?;
+    ensure_agent_exists(&mut connection, &keys, agent, "recipient").await?;
+    let _: () = connection.set(keys.cursor(agent), cursor).await?;
+    Ok(())
+}
+
 /// Read the entire team stream, optionally filtered to one agent.
 ///
 /// This is the testable core behind `history`. It scans the whole stream

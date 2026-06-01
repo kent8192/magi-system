@@ -42,6 +42,9 @@ fi
 if [ "\$1" = "agent" ] && [ "\$2" = "despawn" ]; then
   echo "despawn \$*" >>"$CALLS"; exit 0
 fi
+if [ "\$1" = "codex" ] && [ "\$2" = "bridge" ]; then
+  echo "bridge \$*" >>"$CALLS"; exit 0
+fi
 exit 0
 EOF
   chmod +x "$FAKE_MAGI"
@@ -56,6 +59,7 @@ teardown() {
   run bash "$HOOKS/magi-codex-session-start.sh" <<<'{"session_id":"codex-1","cwd":"/tmp/project","hook_event_name":"SessionStart"}'
   [ "$status" -eq 0 ]
   [[ "$output" == *"agent: quiet-melchior"* ]]
+  [[ "$output" == *"codex app-server bridge: starting"* ]]
 
   local file="$MAGI_CODEX_STATE_DIR/sessions/codex-1.agent"
   [ -f "$file" ]
@@ -67,6 +71,25 @@ teardown() {
   [ -f "$current" ]
   [ "$(sed -n '1p' "$current")" = "quiet-melchior" ]
   [ "$(sed -n '2p' "$current")" = "testteam" ]
+}
+
+@test "Codex SessionStart starts app-server bridge once per session" {
+  bash "$HOOKS/magi-codex-session-start.sh" <<<'{"session_id":"codex-bridge","cwd":"/tmp/project","hook_event_name":"SessionStart"}'
+
+  for _ in 1 2 3 4 5; do
+    grep -q "bridge codex bridge --thread codex-bridge --cwd /tmp/project --codex codex" "$CALLS" && break
+    sleep 0.1
+  done
+  grep -q "bridge codex bridge --thread codex-bridge --cwd /tmp/project --codex codex" "$CALLS"
+  local pid_file="$MAGI_CODEX_STATE_DIR/bridges/codex-bridge.pid"
+  [ -f "$pid_file" ]
+}
+
+@test "MAGI_CODEX_APP_SERVER_BRIDGE=0 disables Codex bridge startup" {
+  MAGI_CODEX_APP_SERVER_BRIDGE=0 run bash "$HOOKS/magi-codex-session-start.sh" <<<'{"session_id":"codex-no-bridge","cwd":"/tmp/project","hook_event_name":"SessionStart"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"codex app-server bridge: disabled"* ]]
+  ! grep -q "bridge codex bridge" "$CALLS"
 }
 
 @test "Codex SessionEnd despawns the session agent" {
@@ -100,6 +123,7 @@ teardown() {
   [ "$status" -eq 0 ]
 
   [ ! -f "$MAGI_CODEX_STATE_DIR/sessions/thread-2.agent" ]
+  [ ! -f "$MAGI_CODEX_STATE_DIR/bridges/thread-2.pid" ]
   grep -q "despawn agent despawn --team testteam --name quiet-melchior" "$CALLS"
 }
 

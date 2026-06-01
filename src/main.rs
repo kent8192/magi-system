@@ -17,13 +17,15 @@
 //! magi inbox                   → messaging::inbox()
 //! magi history                 → messaging::history()
 //! magi watch                   → watch::run()
+//! magi codex bridge            → codex_bridge::run()
 //! magi ssh  {start|status|stop}    → ssh::*
 //! magi install                 → install::run()
 //! magi config {get|set}        → config::*
 //! ```
 use clap::Parser;
 use magi::cli::{
-    AgentCommand, Cli, Command, ConfigCommand, InviteCommand, RedisCommand, SshCommand, TeamCommand,
+    AgentCommand, Cli, CodexCommand, Command, ConfigCommand, InviteCommand, RedisCommand,
+    SshCommand, TeamCommand,
 };
 use magi::error::Result;
 
@@ -94,6 +96,13 @@ async fn main() -> Result<()> {
         // Subscribe to the Pub/Sub channel and stream new messages to stdout
         // in either line or JSON format (controlled by `format`).
         Some(Command::Watch { format }) => magi::watch::run(format).await,
+
+        // --- Codex runtime integrations ---
+        Some(Command::Codex { command }) => match command {
+            CodexCommand::Bridge { thread, cwd, codex } => {
+                magi::codex_bridge::run(thread, cwd, codex).await
+            }
+        },
 
         // --- SSH helper lifecycle ---
         Some(Command::Ssh { command }) => match command {
