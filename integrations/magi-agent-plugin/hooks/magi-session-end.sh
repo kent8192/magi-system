@@ -54,5 +54,6 @@ fi
 
 # Drop the per-session record now that it has been acted on.
 rm -f "$session_file" 2>/dev/null || true
+rm -f "${session_file%.agent}.health" 2>/dev/null || true
 
 exit 0

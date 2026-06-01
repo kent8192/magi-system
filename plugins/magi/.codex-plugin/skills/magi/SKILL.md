@@ -77,4 +77,7 @@ magi config set identity.active_team <team>   # join does not set the active tea
   injecting context. On each prompt, Codex receives the current magi-system
   context: session id, active agent, active team, Redis state, and session
   record status. Treat that hook-derived active agent as authoritative for
-  self-identification. Disable spawning with `MAGI_CODEX_EPHEMERAL=0`.
+  self-identification. Three due consecutive Redis health-check failures mark
+  the recorded agent for cleanup with a 1s, 2s, then 4s nonblocking backoff; the
+  next reachable hook run despawns it and clears the stale record. Disable
+  spawning with `MAGI_CODEX_EPHEMERAL=0`.

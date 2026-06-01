@@ -121,6 +121,13 @@ Code handles that completed background output and relaunches the same Monitor
 command for the next message. If `/magi-system start` is running, the Monitor
 directive is skipped so the SDK bridge remains the only inbox consumer.
 
+Hooks also keep a small `<session>.health` sidecar next to each recorded
+ephemeral agent. Failed Redis health checks are counted without sleeping in the
+hook path: the next due check is scheduled with a 1s, 2s, then 4s backoff. After
+three due consecutive failures the sidecar marks cleanup pending; the next hook
+run that can reach Redis removes the agent through `magi agent despawn` and
+clears the session record.
+
 ## Plugin Parity (Codex vs Claude Code)
 
 The messaging command surface is intentionally mirrored across the Codex `magi`
