@@ -223,14 +223,31 @@ monitor_enabled() {
   esac
 }
 
+monitor_pid_file() {
+  printf '%s/monitors/%s.pid' "$STATE_DIR" "$(safe_key "$1")"
+}
+
+monitor_running() {
+  local file="$1" pid
+  [ -f "$file" ] || return 1
+  pid="$(sed -n '1p' "$file" 2>/dev/null || true)"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+  rm -f "$file" 2>/dev/null || true
+  return 1
+}
+
 if monitor_enabled && [ "$redis_state" = "reachable" ] && [ -n "$team" ] \
-  && [ -n "${agent:-}" ] && ! bridge_running; then
+  && [ -n "${agent:-}" ]; then
   monitor_script="$PLUGIN_ROOT/hooks/magi-monitor-once.sh"
   monitor_session="$(sanitize "$SESSION_ID")"
   monitor_command="$(sanitize "$monitor_script $monitor_session")"
-  ctx="$ctx Claude Code Monitor directive: before other work, invoke Monitor with command: $monitor_command ; description: magi inbox once ; persistent: false. When the Monitor finishes, treat each output line as injected magi context in the form <sender>-><recipient>: message, act on it, then invoke the same Monitor command again so this session keeps waiting for the next Redis Pub/Sub message."
-elif bridge_running; then
-  ctx="$ctx Claude Code Monitor directive skipped because the auto-reply bridge is running and already consumes incoming messages."
+  if [ -n "$monitor_session" ] && monitor_running "$(monitor_pid_file "$monitor_session")"; then
+    ctx="$ctx magi Monitor already running for this Claude Code session."
+  else
+    ctx="$ctx Claude Code Monitor directive: before other work, invoke Monitor with command: $monitor_command ; description: magi inbox once ; persistent: false. When the Monitor finishes, treat each output line as injected magi context in the form <sender>-><recipient>: message, act on it, then invoke the same Monitor command again so this session keeps waiting for the next Redis Pub/Sub message."
+  fi
 fi
 
 # Emit SessionStart additionalContext as JSON.

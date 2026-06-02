@@ -12,19 +12,22 @@ setup() {
   TEST_HOME="$(mktemp -d)"
   export HOME="$TEST_HOME"
   export MAGI_AGENT_STATE_DIR="$TEST_HOME/state"
+  export MAGI_AGENT_AUTOSTART_REDIS=0
+  export MAGI_AGENT_AUTOSTART_BRIDGE=0
+  unset BASH_ENV
+  unset ENV
+  unset PYTHONSTARTUP
 
   CALLS="$TEST_HOME/calls.log"
   : >"$CALLS"
-  REDIS_STATUS_FILE="$TEST_HOME/redis.status"
-  printf 'up\n' >"$REDIS_STATUS_FILE"
 
   # Fake magi: reachable Redis, a configured team, and spawn/despawn that record
   # their invocation like the real CLI.
   FAKE_MAGI="$TEST_HOME/magi"
   cat >"$FAKE_MAGI" <<EOF
-#!/usr/bin/env bash
+#!/bin/sh
 if [ "\$1 \$2" = "redis status" ]; then
-  [ "\$(cat "$REDIS_STATUS_FILE" 2>/dev/null)" = "down" ] && exit 1
+  [ "\${MAGI_FAKE_REDIS_DOWN:-0}" = "1" ] && exit 1
   exit 0
 fi
 if [ "\$1" = "config" ] && [ "\$2" = "get" ]; then
@@ -42,6 +45,9 @@ if [ "\$1" = "agent" ] && [ "\$2" = "despawn" ]; then
 fi
 if [ "\$1" = "watch" ]; then
   echo "watch \$*" >>"$CALLS"
+  if [ -n "\${MAGI_FAKE_WATCH_SLEEP:-}" ]; then
+    sleep "\$MAGI_FAKE_WATCH_SLEEP"
+  fi
   printf 'fatherly-balthasar->quiet-melchior: hello from redis\n'
   exit 0
 fi
@@ -70,15 +76,20 @@ teardown() {
   [ "$(sed -n '3p' "$file")" = "" ]
 }
 
-@test "SessionStart skips Monitor directive when bridge is running" {
+@test "SessionStart directs Monitor even when bridge is running" {
   mkdir -p "$MAGI_AGENT_STATE_DIR"
-  printf '%s\n' "$$" >"$MAGI_AGENT_STATE_DIR/agentd.pid"
+  sleep 10 &
+  local bridge_pid="$!"
+  printf '%s\n' "$bridge_pid" >"$MAGI_AGENT_STATE_DIR/agentd.pid"
 
   run bash "$HOOKS/magi-session-start.sh" <<<'{"session_id":"sess-bridge","source":"startup"}'
+  kill "$bridge_pid" 2>/dev/null || true
+  wait "$bridge_pid" 2>/dev/null || true
+
   [ "$status" -eq 0 ]
   [[ "$output" == *"auto-reply bridge: running"* ]]
-  [[ "$output" == *"Monitor directive skipped"* ]]
-  [[ "$output" != *"magi-monitor-once.sh sess-bridge"* ]]
+  [[ "$output" == *"Claude Code Monitor directive"* ]]
+  [[ "$output" == *"magi-monitor-once.sh sess-bridge"* ]]
 }
 
 @test "magi Monitor wrapper emits context-form messages and uses the session id" {
@@ -86,6 +97,69 @@ teardown() {
   [ "$status" -eq 0 ]
   [ "$output" = "fatherly-balthasar->quiet-melchior: hello from redis" ]
   grep -q "watch watch --once --format context" "$CALLS"
+}
+
+@test "magi Monitor wrapper records and clears a session pid" {
+  MAGI_FAKE_WATCH_SLEEP=1 "$HOOKS/magi-monitor-once.sh" "sess-pid" >"$TEST_HOME/monitor.out" &
+  local monitor_pid="$!"
+  local pid_file="$MAGI_AGENT_STATE_DIR/monitors/sess-pid.pid"
+
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [ -f "$pid_file" ] && break
+    sleep 0.1
+  done
+
+  [ -f "$pid_file" ]
+  [ "$(cat "$pid_file")" = "$monitor_pid" ]
+  wait "$monitor_pid"
+  [ ! -f "$pid_file" ]
+  [ "$(cat "$TEST_HOME/monitor.out")" = "fatherly-balthasar->quiet-melchior: hello from redis" ]
+}
+
+@test "Monitor ensure hook directs Monitor when no session pid is running" {
+  mkdir -p "$MAGI_AGENT_STATE_DIR/sessions"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_AGENT_STATE_DIR/sessions/sess-ensure.agent"
+
+  run bash "$HOOKS/magi-monitor-ensure.sh" <<<'{"session_id":"sess-ensure","hook_event_name":"UserPromptSubmit"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"systemMessage"'* ]]
+  [[ "$output" == *"Claude Code Monitor directive"* ]]
+  [[ "$output" == *"magi-monitor-once.sh sess-ensure"* ]]
+}
+
+@test "Monitor ensure hook skips duplicate directive while session pid is running" {
+  mkdir -p "$MAGI_AGENT_STATE_DIR/sessions" "$MAGI_AGENT_STATE_DIR/monitors"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_AGENT_STATE_DIR/sessions/sess-running.agent"
+  sleep 10 &
+  local running_pid="$!"
+  printf '%s\n' "$running_pid" >"$MAGI_AGENT_STATE_DIR/monitors/sess-running.pid"
+
+  run bash "$HOOKS/magi-monitor-ensure.sh" <<<'{"session_id":"sess-running","hook_event_name":"PostToolUse"}'
+  kill "$running_pid" 2>/dev/null || true
+  wait "$running_pid" 2>/dev/null || true
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Monitor already running"* ]]
+  [[ "$output" != *"magi-monitor-once.sh sess-running"* ]]
+}
+
+@test "Monitor ensure hook replaces stale pid with a new directive" {
+  mkdir -p "$MAGI_AGENT_STATE_DIR/sessions" "$MAGI_AGENT_STATE_DIR/monitors"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_AGENT_STATE_DIR/sessions/sess-stale.agent"
+  printf '999999\n' >"$MAGI_AGENT_STATE_DIR/monitors/sess-stale.pid"
+
+  run bash "$HOOKS/magi-monitor-ensure.sh" <<<'{"session_id":"sess-stale","hook_event_name":"Stop"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Claude Code Monitor directive"* ]]
+  [[ "$output" == *"magi-monitor-once.sh sess-stale"* ]]
+  [ ! -f "$MAGI_AGENT_STATE_DIR/monitors/sess-stale.pid" ]
+}
+
+@test "Claude Code hooks register Monitor ensure phases" {
+  grep -q '"UserPromptSubmit"' "$HOOKS/hooks.json"
+  grep -q '"PostToolUse"' "$HOOKS/hooks.json"
+  grep -q '"Stop"' "$HOOKS/hooks.json"
+  [ "$(grep -c 'magi-monitor-ensure.sh' "$HOOKS/hooks.json")" -eq 3 ]
 }
 
 @test "SessionEnd despawns the agent and clears the record" {
@@ -119,9 +193,8 @@ teardown() {
 @test "SessionStart records Redis health failures with nonblocking backoff" {
   mkdir -p "$MAGI_AGENT_STATE_DIR/sessions"
   printf 'quiet-melchior\ntestteam\n' >"$MAGI_AGENT_STATE_DIR/sessions/sess-health.agent"
-  printf 'down\n' >"$REDIS_STATUS_FILE"
 
-  MAGI_AGENT_HEALTH_NOW=100 run bash "$HOOKS/magi-session-start.sh" <<<'{"session_id":"sess-health","source":"startup"}'
+  MAGI_FAKE_REDIS_DOWN=1 MAGI_AGENT_HEALTH_NOW=100 run bash "$HOOKS/magi-session-start.sh" <<<'{"session_id":"sess-health","source":"startup"}'
   [ "$status" -eq 0 ]
   local health="$MAGI_AGENT_STATE_DIR/sessions/sess-health.health"
   [ -f "$health" ]
@@ -129,16 +202,16 @@ teardown() {
   grep -q '^next_check_at=101$' "$health"
   grep -q '^cleanup_pending=0$' "$health"
 
-  MAGI_AGENT_HEALTH_NOW=100 run bash "$HOOKS/magi-session-start.sh" <<<'{"session_id":"sess-health","source":"startup"}'
+  MAGI_FAKE_REDIS_DOWN=1 MAGI_AGENT_HEALTH_NOW=100 run bash "$HOOKS/magi-session-start.sh" <<<'{"session_id":"sess-health","source":"startup"}'
   [ "$status" -eq 0 ]
   grep -q '^failures=1$' "$health"
 
-  MAGI_AGENT_HEALTH_NOW=101 run bash "$HOOKS/magi-session-start.sh" <<<'{"session_id":"sess-health","source":"startup"}'
+  MAGI_FAKE_REDIS_DOWN=1 MAGI_AGENT_HEALTH_NOW=101 run bash "$HOOKS/magi-session-start.sh" <<<'{"session_id":"sess-health","source":"startup"}'
   [ "$status" -eq 0 ]
   grep -q '^failures=2$' "$health"
   grep -q '^next_check_at=103$' "$health"
 
-  MAGI_AGENT_HEALTH_NOW=103 run bash "$HOOKS/magi-session-start.sh" <<<'{"session_id":"sess-health","source":"startup"}'
+  MAGI_FAKE_REDIS_DOWN=1 MAGI_AGENT_HEALTH_NOW=103 run bash "$HOOKS/magi-session-start.sh" <<<'{"session_id":"sess-health","source":"startup"}'
   [ "$status" -eq 0 ]
   grep -q '^failures=3$' "$health"
   grep -q '^next_check_at=107$' "$health"
