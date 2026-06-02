@@ -87,6 +87,7 @@ pub async fn watch_once_with_url(
     agent: &str,
     format: WatchFormat,
 ) -> Result<Vec<String>> {
+    crate::actas::ensure_unblocked_for_session(url, team, agent).await?;
     let messages =
         messaging::read_inbox_with_url(url, team, agent, InboxReadMode::MarkRead).await?;
     messages

@@ -24,8 +24,8 @@
 //! ```
 use clap::Parser;
 use magi::cli::{
-    AgentCommand, Cli, CodexCommand, Command, ConfigCommand, InviteCommand, RedisCommand,
-    SshCommand, TeamCommand,
+    ActasCommand, AgentCommand, Cli, CodexCommand, Command, ConfigCommand, DeliveryCommand,
+    IdentityCommand, InviteCommand, RedisCommand, RegistrationCommand, SshCommand, TeamCommand,
 };
 use magi::error::Result;
 
@@ -60,6 +60,7 @@ async fn main() -> Result<()> {
             TeamCommand::List => magi::team::list().await,
             // List members of a specific team.
             TeamCommand::Members { team } => magi::team::members(team).await,
+            TeamCommand::Rename { old, new } => magi::team::rename(old, new).await,
         },
 
         // --- Invite-based onboarding ---
@@ -83,15 +84,93 @@ async fn main() -> Result<()> {
             AgentCommand::Spawn { team, agent_type } => magi::agent::spawn(team, agent_type).await,
             // Remove an ephemeral agent from the team.
             AgentCommand::Despawn { team, name } => magi::agent::despawn(team, name).await,
+            AgentCommand::Rename { team, old, new } => magi::agent::rename(team, old, new).await,
+        },
+
+        // --- Direct registration management ---
+        Some(Command::Registration { command }) => match command {
+            RegistrationCommand::Add {
+                team,
+                agent,
+                agent_type,
+                project,
+                session,
+            } => magi::registration::add(team, agent, agent_type, project, session).await,
+            RegistrationCommand::Remove { team, agent } => {
+                magi::registration::remove(team, agent).await
+            }
+            RegistrationCommand::Reset {
+                project,
+                agent_type,
+                agent,
+                session,
+            } => magi::registration::reset(project, agent_type, agent, session).await,
+        },
+
+        // --- Project/type identity discovery ---
+        Some(Command::Identity { command }) => match command {
+            IdentityCommand::List {
+                project,
+                agent_type,
+            } => magi::identity::list(project, agent_type).await,
+            IdentityCommand::Whoami {
+                project,
+                agent_type,
+            } => magi::identity::whoami(project, agent_type).await,
+        },
+
+        // --- Actas role claims ---
+        Some(Command::Actas { command }) => match command {
+            ActasCommand::Claim {
+                agent,
+                team,
+                session,
+                ttl,
+            } => magi::actas::claim(agent, team, session, ttl).await,
+            ActasCommand::Release {
+                agent,
+                team,
+                session,
+            } => magi::actas::release(agent, team, session).await,
+            ActasCommand::Status { agent, team } => magi::actas::status(agent, team).await,
+            ActasCommand::Gc => magi::actas::gc().await,
+        },
+
+        // --- Delivery mode configuration ---
+        Some(Command::Delivery { command }) => match command {
+            DeliveryCommand::Set {
+                mode,
+                agent_type,
+                project,
+            } => magi::delivery::set(mode, agent_type, project).await,
+            DeliveryCommand::Status {
+                agent_type,
+                project,
+            } => magi::delivery::status(agent_type, project).await,
+            DeliveryCommand::Restart {
+                agent_type,
+                project,
+            } => magi::delivery::restart(agent_type, project).await,
+            DeliveryCommand::Stop {
+                agent_type,
+                project,
+            } => magi::delivery::stop(agent_type, project).await,
         },
 
         // --- Messaging ---
         // Send a message to another agent or broadcast to a team.
         Some(Command::Send { to, message }) => magi::messaging::send(to, message).await,
         // Display unread messages from the agent's personal Redis Stream inbox.
-        Some(Command::Inbox) => magi::messaging::inbox().await,
+        Some(Command::Inbox {
+            team,
+            agent,
+            quiet,
+            hook_format,
+        }) => magi::messaging::inbox(team, agent, quiet, hook_format).await,
         // Show the message history for a team or a specific agent.
-        Some(Command::History { team, agent }) => magi::messaging::history(team, agent).await,
+        Some(Command::History { team, agent, limit }) => {
+            magi::messaging::history(team, agent, limit).await
+        }
 
         // Subscribe to the Pub/Sub channel and stream new messages to stdout
         // in line, JSON, or context format. `--once` exits after delivery.
@@ -126,6 +205,7 @@ async fn main() -> Result<()> {
             ConfigCommand::Get { key } => magi::config::get(key).await,
             // Write a configuration key-value pair to the magi state directory.
             ConfigCommand::Set { key, value } => magi::config::set(key, value).await,
+            ConfigCommand::Show => magi::config::show().await,
         },
     }
 }

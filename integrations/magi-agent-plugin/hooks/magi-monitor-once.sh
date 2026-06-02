@@ -8,6 +8,16 @@
 set -euo pipefail
 
 SESSION_ID="${1:-${CLAUDE_SESSION_ID:-${CLAUDE_CODE_SESSION_ID:-}}}"
+STATE_DIR="${MAGI_AGENT_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/magi-agent}"
+
+safe_key() { printf '%s' "${1:-}" | tr -cd 'A-Za-z0-9._-' ; }
+
+pid_file=""
+cleanup() {
+  if [ -n "$pid_file" ]; then
+    rm -f "$pid_file" 2>/dev/null || true
+  fi
+}
 
 MAGI="${MAGI_BIN:-}"
 [ -n "$MAGI" ] || MAGI="$(command -v magi 2>/dev/null || true)"
@@ -24,6 +34,10 @@ fi
 if [ -n "$SESSION_ID" ]; then
   export MAGI_SESSION_ID="$SESSION_ID"
   export CLAUDE_SESSION_ID="$SESSION_ID"
+  pid_file="$STATE_DIR/monitors/$(safe_key "$SESSION_ID").pid"
+  mkdir -p "$(dirname "$pid_file")" 2>/dev/null || true
+  printf '%s\n' "$$" >"$pid_file" 2>/dev/null || true
+  trap cleanup EXIT INT TERM HUP
 fi
 
-exec "$MAGI" watch --once --format context
+"$MAGI" watch --once --format context

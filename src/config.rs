@@ -363,6 +363,13 @@ pub async fn set(key: String, value: String) -> Result<()> {
     Ok(())
 }
 
+/// Implements the `magi config show` subcommand.
+pub async fn show() -> Result<()> {
+    let config = AppConfig::load()?;
+    print!("{}", toml::to_string_pretty(&config)?);
+    Ok(())
+}
+
 /// Map a raw string to an optional value, treating empty input as "unset".
 ///
 /// Used so that `magi config set <key> ""` clears an optional field rather

@@ -110,20 +110,35 @@ If no session record or hook current pointer exists, there is no agent-name
 fallback; commands that need an agent fail instead of reusing another session's
 name. The team can still fall back to `identity.active_team`.
 
+Operators can manage explicit project/type registrations with
+`magi registration add/remove/reset`. Registrations keep the existing
+`type:project` set value for compatibility, while optional session ownership is
+stored in an adjacent Redis hash. `magi identity list` and
+`magi identity whoami` inspect those registrations to report exact matches,
+multiple matches, same-type suggestions in other projects, or a not-joined
+state without restoring persistent active-agent config.
+
+`magi actas claim` writes a TTL-backed Redis claim for a `(team, agent,
+session)` pair. Inbox consumers (`inbox`, `watch`, and the Codex bridge) check
+that claim before advancing a cursor. If another live session owns the claim,
+the consumer fails before reading messages. `actas gc` is intentionally a
+health command because stale claims expire via Redis TTL.
+
 The Codex plugin also injects a compact UserPromptSubmit context block before
 each prompt with the resolved session id, active magi agent, active team, Redis
 state, and session record status. If Codex was updated after a session started
 and SessionStart did not create a record, UserPromptSubmit performs the same
 spawn-and-record step before injecting context.
 
-The Claude Code plugin uses the runtime's Monitor primitive when the autonomous
-bridge is not running. SessionStart directs Claude Code to launch
+The Claude Code plugin uses the runtime's Monitor primitive to keep at least
+one foreground inbox waiter available for each session. SessionStart,
+UserPromptSubmit, PostToolUse, and Stop hooks check the session-scoped Monitor
+pid sidecar; when no live Monitor is recorded, they direct Claude Code to launch
 `hooks/magi-monitor-once.sh <session-id>`, which blocks in
 `magi watch --once --format context`. When Redis publishes a wakeup for this
 agent, the Monitor process exits with `<sender>-><recipient>: message`; Claude
 Code handles that completed background output and relaunches the same Monitor
-command for the next message. If `/magi-system start` is running, the Monitor
-directive is skipped so the SDK bridge remains the only inbox consumer.
+command for the next message.
 
 Hooks also keep a small `<session>.health` sidecar next to each recorded
 ephemeral agent. Failed Redis health checks are counted without sleeping in the
@@ -156,11 +171,24 @@ successful delivery. `delivering` means the bridge is actively submitting unread
 messages to the app-server. If the Codex app-server control socket is missing,
 the status becomes `unsupported` and the inbox cursor is not advanced;
 `stdio://` app-server processes cannot be reached by this external bridge.
+Devcontainer use follows the same model: immediate injection requires the
+container to see the host MAGI config/state, Codex hook state, and app-server
+control socket. If any of those runtime surfaces are not reachable, the bridge
+uses the same `unsupported` status rather than acknowledging delivery.
 Other delivery failures remain `retrying` with the last error until a later
 delivery succeeds.
 Delivery failures are retried without acknowledging the failed message: when a
 batch partially succeeds, the cursor advances only through the successfully
 submitted messages.
+
+`magi delivery set/status/restart/stop` stores delivery mode metadata for a
+`(type, project)` pair in Redis. These commands are the explicit operator path
+for delivery-mode state; runtime hooks do not infer or mutate user config
+silently outside that path.
+
+Agent and team rename commands move roster, profile, registration, cursor, and
+team metadata keys. Stream history remains immutable, so historical messages
+keep the names that were recorded when they were sent.
 
 ## Plugin Parity (Codex vs Claude Code)
 

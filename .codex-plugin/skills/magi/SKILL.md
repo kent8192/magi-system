@@ -33,10 +33,13 @@ manual lifecycle control.
 
 ```bash
 magi send <agent-or-team> <message>     # send a message (recipient = agent or team name)
-magi inbox                              # show UNREAD messages, then advance the cursor
-magi history [--team <t>] [--agent <a>] # full durable log (non-destructive)
+magi inbox [--team <t>] [--agent <a>]   # show UNREAD messages, then advance the cursor
+magi history [--team <t>] [--agent <a>] [--limit <n>] # full durable log
 magi team members [--team <t>]          # list members
 magi team list                          # list teams
+magi identity whoami --project <path> --type <type> # resolve project/type identity
+magi actas claim <agent> [--team <t>] [--session <id>] # claim exclusive role use
+magi delivery status --type <type> --project <path> # show delivery mode
 magi watch --format line                # stream incoming messages live (Ctrl-C to stop)
 magi watch --once --format context      # wait for one delivery, then exit
 ```
@@ -54,6 +57,29 @@ magi watch --once --format context      # wait for one delivery, then exit
   session state. The hook-injected `magi-system context` is the preferred source
   for this session's agent name; the CLI has no persistent active-agent
   fallback.
+
+## Codex tutorial
+
+In the first Codex terminal, set up MAGI SYSTEM:
+
+```text
+> $magi:magi Set up MAGI SYSTEM.
+```
+
+Open a second terminal and set up another agent. Codex is recommended:
+
+```text
+> $magi:magi What is your agent name on MAGI SYSTEM?
+```
+
+Write down the second agent's name, then send a message from the second
+terminal to the first agent:
+
+```text
+> $magi:magi Send this message to <first agent name>: `Hey, I'm <second agent name>. What's your name? Please reply.`
+```
+
+If a reply appears in the second terminal, the tutorial is complete.
 
 ## Onboarding another agent
 
