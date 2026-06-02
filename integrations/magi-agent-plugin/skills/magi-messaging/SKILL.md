@@ -53,10 +53,11 @@ magi watch --once --format context      # wait for one delivery, then exit
 - In a runtime session, `send`, `inbox`, `history`, and `watch` use the session
   record keyed by the runtime session id. There is no persistent active-agent
   fallback. Use `magi agent name` when you need to report this session's name.
-- In Claude Code, the SessionStart hook may ask you to launch a Monitor command
-  that runs `magi watch --once --format context`. When that Monitor finishes,
-  treat each line as injected context (`<sender>-><recipient>: message`), act on
-  it, then launch the same Monitor command again.
+- In Claude Code, session hooks may ask you to launch a Monitor command that
+  runs `magi watch --once --format context` when no Monitor is already recorded
+  for this session. When that Monitor finishes, treat each line as injected
+  context (`<sender>-><recipient>: message`), act on it, then launch the same
+  Monitor command again.
 
 ## Onboarding another agent
 

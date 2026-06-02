@@ -130,14 +130,15 @@ state, and session record status. If Codex was updated after a session started
 and SessionStart did not create a record, UserPromptSubmit performs the same
 spawn-and-record step before injecting context.
 
-The Claude Code plugin uses the runtime's Monitor primitive when the autonomous
-bridge is not running. SessionStart directs Claude Code to launch
+The Claude Code plugin uses the runtime's Monitor primitive to keep at least
+one foreground inbox waiter available for each session. SessionStart,
+UserPromptSubmit, PostToolUse, and Stop hooks check the session-scoped Monitor
+pid sidecar; when no live Monitor is recorded, they direct Claude Code to launch
 `hooks/magi-monitor-once.sh <session-id>`, which blocks in
 `magi watch --once --format context`. When Redis publishes a wakeup for this
 agent, the Monitor process exits with `<sender>-><recipient>: message`; Claude
 Code handles that completed background output and relaunches the same Monitor
-command for the next message. If `/magi-system start` is running, the Monitor
-directive is skipped so the SDK bridge remains the only inbox consumer.
+command for the next message.
 
 Hooks also keep a small `<session>.health` sidecar next to each recorded
 ephemeral agent. Failed Redis health checks are counted without sleeping in the
@@ -170,6 +171,10 @@ successful delivery. `delivering` means the bridge is actively submitting unread
 messages to the app-server. If the Codex app-server control socket is missing,
 the status becomes `unsupported` and the inbox cursor is not advanced;
 `stdio://` app-server processes cannot be reached by this external bridge.
+Devcontainer use follows the same model: immediate injection requires the
+container to see the host MAGI config/state, Codex hook state, and app-server
+control socket. If any of those runtime surfaces are not reachable, the bridge
+uses the same `unsupported` status rather than acknowledging delivery.
 Other delivery failures remain `retrying` with the last error until a later
 delivery succeeds.
 Delivery failures are retried without acknowledging the failed message: when a
