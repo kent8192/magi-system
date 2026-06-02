@@ -111,15 +111,15 @@ magi config set identity.active_team <team>   # join does not set the active tea
 - SessionStart ensures the managed Codex app-server daemon is running, then
   launches `magi codex bridge --thread <session-id>` unless
   `MAGI_CODEX_APP_SERVER_BRIDGE=0`. The bridge subscribes to Redis Pub/Sub for
-  this session agent, consumes unread inbox messages, and sends each
-  `<sender>-><recipient>: message` line to the Codex app-server over the Unix
-  control socket's WebSocket transport with `turn/start`. If Codex rejects the
-  new turn because another turn is active, the bridge falls back to
-  `thread/inject_items` so the message is still present in model-visible thread
-  history. Prompt hooks perform the same daemon check before restarting a
+  this session agent, consumes unread inbox messages, and first injects each
+  `<sender>-><recipient>: message` line into Codex thread history with
+  `thread/inject_items`. After injection succeeds, the bridge best-effort starts
+  a Codex turn with `turn/start`; a turn-start failure does not mark the message
+  unread again. Prompt hooks perform the same daemon check before restarting a
   missing bridge and report the bridge as starting, running, delivering,
-  retrying, unsupported, stopped, or disabled. Set `MAGI_CODEX_CLI` when the
-  desired Codex CLI is not the first `codex` on PATH, set
+  injecting, injected, turn_started, retrying, unsupported, stopped, or disabled.
+  Set `MAGI_CODEX_CLI` when the desired Codex CLI is not the first `codex` on
+  PATH, set
   `MAGI_CODEX_APP_SERVER_SOCKET` when the bridge should use a specific Unix
   app-server control socket, and set `MAGI_CODEX_APP_SERVER_DAEMON=0` to disable
   managed daemon autostart. `stdio://` app-server processes cannot be reached by

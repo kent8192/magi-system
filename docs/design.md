@@ -155,21 +155,23 @@ to the team Pub/Sub channel, drains unread inbox messages for the session agent,
 formats each delivery as `<sender>-><recipient>: message`, connects directly to
 the Codex Unix control socket with WebSocket-over-UDS, initializes the
 app-server JSON-RPC session, and sends the message over that WebSocket
-transport. The normal path starts a new Codex turn with `turn/start` so the
-agent acts immediately; if the app-server rejects that because the thread is
-already busy, the bridge persists the message with `thread/inject_items` as a
-fallback.
+transport. The bridge first persists the message with `thread/inject_items`;
+only after that injection succeeds does it best-effort start a Codex turn with
+`turn/start` so the agent can act immediately.
 `MAGI_CODEX_APP_SERVER_BRIDGE=0` disables this background bridge,
 `MAGI_CODEX_CLI` overrides the Codex executable, and
 `MAGI_CODEX_APP_SERVER_SOCKET` overrides the Unix control socket path.
 `MAGI_CODEX_APP_SERVER_DAEMON=0` disables managed daemon autostart. The bridge
 records a status sidecar under the Codex hook state directory so prompt hooks
-can distinguish `starting`, `running`, `delivering`, `retrying`, `unsupported`,
-`stopped`, and `disabled`. `running` means the bridge process is alive and has
-no known delivery failure, or that a previous failure has been cleared by a
-successful delivery. `delivering` means the bridge is actively submitting unread
-messages to the app-server. If the Codex app-server control socket is missing,
-the status becomes `unsupported` and the inbox cursor is not advanced;
+can distinguish `starting`, `running`, `delivering`, `injecting`, `injected`,
+`turn_started`, `retrying`, `unsupported`, `stopped`, and `disabled`. `running`
+means the bridge process is alive and has no known delivery failure. `delivering`
+means the bridge is actively draining unread messages, `injecting` means it is
+persisting a message into the Codex thread, `injected` means durable injection
+succeeded but the follow-up turn did not start, and `turn_started` means both
+injection and the follow-up turn succeeded. If the Codex app-server control
+socket is missing, the status becomes `unsupported` and the inbox cursor is not
+advanced;
 `stdio://` app-server processes cannot be reached by this external bridge.
 Devcontainer use follows the same model: immediate injection requires the
 container to see the host MAGI config/state, Codex hook state, and app-server
@@ -179,7 +181,7 @@ Other delivery failures remain `retrying` with the last error until a later
 delivery succeeds.
 Delivery failures are retried without acknowledging the failed message: when a
 batch partially succeeds, the cursor advances only through the successfully
-submitted messages.
+injected messages.
 
 `magi delivery set/status/restart/stop` stores delivery mode metadata for a
 `(type, project)` pair in Redis. These commands are the explicit operator path

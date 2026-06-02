@@ -2,10 +2,10 @@
 //!
 //! The bridge tails Redis Pub/Sub for the active magi session agent. Each
 //! delivered inbox batch is converted into compact context lines and submitted
-//! to the Codex app-server over the Unix control socket's WebSocket transport. A
-//! new Codex turn is started for normal idle sessions; if the app-server rejects
-//! the turn, the bridge falls back to `thread/inject_items` so the message is
-//! still persisted into model-visible thread history.
+//! to the Codex app-server over the Unix control socket's WebSocket transport.
+//! Messages are first persisted into model-visible thread history with
+//! `thread/inject_items`; `turn/start` is a best-effort follow-up that wakes the
+//! session after durable injection succeeds.
 
 use std::future::Future;
 use std::io::ErrorKind;
@@ -109,7 +109,7 @@ fn resolve_thread_id(thread: Option<String>) -> Result<String> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DeliveryOutcome {
     NoPending,
-    Delivered,
+    Delivered(CodexSubmitOutcome),
 }
 
 #[derive(Debug)]
@@ -157,7 +157,9 @@ async fn deliver_pending(
         |thread_id, cwd, message_id, text| {
             let codex = delivery.codex.to_string();
             let socket = delivery.socket.to_path_buf();
+            let status_path = status_path.map(Path::to_path_buf);
             async move {
+                write_bridge_status(status_path.as_deref(), "injecting", None);
                 submit_to_codex_with_socket(
                     &codex,
                     &socket,
@@ -208,7 +210,7 @@ async fn deliver_messages_with_submitter<F, Fut>(
 ) -> std::result::Result<DeliveryProgress, DeliveryFailure>
 where
     F: FnMut(String, Option<String>, String, String) -> Fut,
-    Fut: Future<Output = Result<()>>,
+    Fut: Future<Output = Result<CodexSubmitOutcome>>,
 {
     if messages.is_empty() {
         return Ok(DeliveryProgress {
@@ -220,20 +222,28 @@ where
     let thread_id = thread_id.to_string();
     let cwd = cwd.map(ToOwned::to_owned);
     let mut last_delivered_id = None;
+    let mut last_submit_outcome = None;
     for message in messages {
         let message_id = message.id.clone();
         let text = format_context_line(&message);
-        if let Err(error) = submit(thread_id.clone(), cwd.clone(), message_id.clone(), text).await {
-            return Err(DeliveryFailure {
-                error,
-                last_delivered_id,
-            });
-        }
+        let submit_outcome =
+            match submit(thread_id.clone(), cwd.clone(), message_id.clone(), text).await {
+                Ok(outcome) => outcome,
+                Err(error) => {
+                    return Err(DeliveryFailure {
+                        error,
+                        last_delivered_id,
+                    });
+                }
+            };
         last_delivered_id = Some(message_id);
+        last_submit_outcome = Some(submit_outcome);
     }
 
     Ok(DeliveryProgress {
-        outcome: DeliveryOutcome::Delivered,
+        outcome: DeliveryOutcome::Delivered(
+            last_submit_outcome.expect("non-empty delivery must record submit outcome"),
+        ),
         last_delivered_id,
     })
 }
@@ -252,11 +262,18 @@ async fn deliver_pending_and_record(delivery: &BridgeDelivery<'_>, status_path: 
 
 fn record_delivery_outcome(status_path: Option<&Path>, outcome: DeliveryOutcome) {
     match outcome {
-        DeliveryOutcome::Delivered => write_bridge_status(status_path, "running", None),
+        DeliveryOutcome::Delivered(outcome) => {
+            let state = if outcome.turn_started {
+                "turn_started"
+            } else {
+                "injected"
+            };
+            write_bridge_status(status_path, state, None);
+        }
         DeliveryOutcome::NoPending => {
             if matches!(
                 current_bridge_status_state(status_path).as_deref(),
-                None | Some("starting") | Some("delivering")
+                None | Some("starting") | Some("delivering") | Some("injecting")
             ) {
                 write_bridge_status(status_path, "running", None);
             }
@@ -405,6 +422,24 @@ pub fn format_context_line(message: &MessageRecord) -> String {
     )
 }
 
+/// Result of submitting a magi message into a Codex thread.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CodexSubmitOutcome {
+    /// `true` when the message has been persisted through `thread/inject_items`.
+    pub injection_succeeded: bool,
+    /// `true` when the best-effort follow-up `turn/start` also succeeded.
+    pub turn_started: bool,
+}
+
+impl CodexSubmitOutcome {
+    fn injected(turn_started: bool) -> Self {
+        Self {
+            injection_succeeded: true,
+            turn_started,
+        }
+    }
+}
+
 /// Submits a context line to the Codex app-server.
 pub async fn submit_to_codex(
     codex: &str,
@@ -412,7 +447,7 @@ pub async fn submit_to_codex(
     cwd: Option<&str>,
     message_id: &str,
     text: &str,
-) -> Result<()> {
+) -> Result<CodexSubmitOutcome> {
     let socket = resolve_codex_app_server_socket(None);
     submit_to_codex_with_socket(codex, &socket, thread_id, cwd, message_id, text).await
 }
@@ -425,7 +460,7 @@ pub async fn submit_to_codex_with_socket(
     cwd: Option<&str>,
     message_id: &str,
     text: &str,
-) -> Result<()> {
+) -> Result<CodexSubmitOutcome> {
     let mut client = WebSocketJsonRpcClient::connect(socket).await?;
 
     client
@@ -455,17 +490,17 @@ pub async fn submit_to_codex_with_socket(
         }))
         .await?;
 
-    let turn = build_turn_start_request(thread_id, cwd, message_id, text);
-    if let Err(turn_error) = client.request(turn).await {
-        let inject = build_inject_items_request(thread_id, message_id, text);
-        client.request(inject).await.map_err(|inject_error| {
-            MagiError::CommandFailed(format!(
-                "codex app-server turn/start failed ({turn_error}); fallback thread/inject_items failed ({inject_error})"
-            ))
-        })?;
-    }
+    let inject = build_inject_items_request(thread_id, message_id, text);
+    client.request(inject).await.map_err(|inject_error| {
+        MagiError::CommandFailed(format!(
+            "codex app-server thread/inject_items failed: {inject_error}"
+        ))
+    })?;
 
-    Ok(())
+    let turn = build_turn_start_request(thread_id, cwd, message_id, text);
+    let turn_started = client.request(turn).await.is_ok();
+
+    Ok(CodexSubmitOutcome::injected(turn_started))
 }
 
 /// Builds the JSON-RPC envelope for starting a Codex turn.
@@ -489,7 +524,7 @@ pub fn build_turn_start_request(
     })
 }
 
-/// Builds the JSON-RPC envelope for persisting a fallback user message.
+/// Builds the JSON-RPC envelope for persisting a user message into thread history.
 pub fn build_inject_items_request(thread_id: &str, message_id: &str, text: &str) -> Value {
     json!({
         "method": "thread/inject_items",
@@ -903,10 +938,33 @@ mod tests {
             Some("failed to connect to app-server"),
         );
 
-        record_delivery_outcome(Some(&status_path), DeliveryOutcome::Delivered);
+        record_delivery_outcome(
+            Some(&status_path),
+            DeliveryOutcome::Delivered(CodexSubmitOutcome::injected(true)),
+        );
 
         let status = std::fs::read_to_string(status_path).expect("status");
-        assert!(status.contains("state=running"));
+        assert!(status.contains("state=turn_started"));
+        assert!(status.contains("last_error=\n"));
+    }
+
+    #[test]
+    fn successful_injection_without_turn_start_clears_previous_retrying_status() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let status_path = temp.path().join("bridge.status");
+        write_bridge_status(
+            Some(&status_path),
+            "retrying",
+            Some("failed to connect to app-server"),
+        );
+
+        record_delivery_outcome(
+            Some(&status_path),
+            DeliveryOutcome::Delivered(CodexSubmitOutcome::injected(false)),
+        );
+
+        let status = std::fs::read_to_string(status_path).expect("status");
+        assert!(status.contains("state=injected"));
         assert!(status.contains("last_error=\n"));
     }
 
@@ -951,7 +1009,7 @@ mod tests {
                 let seen_attempts = Arc::clone(&seen_attempts);
                 async move {
                     if seen_attempts.fetch_add(1, Ordering::SeqCst) == 0 {
-                        Ok(())
+                        Ok(CodexSubmitOutcome::injected(true))
                     } else {
                         Err(MagiError::CommandFailed("proxy down".to_string()))
                     }
@@ -979,5 +1037,25 @@ mod tests {
         .expect_err("first delivery should fail");
 
         assert!(result.last_delivered_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn turn_start_failure_after_injection_still_counts_as_delivered() {
+        let result = deliver_messages_with_submitter(
+            vec![message("1-0", "first")],
+            "thread",
+            Some("/tmp/project"),
+            |_thread_id, _cwd, _message_id, _text| async {
+                Ok(CodexSubmitOutcome::injected(false))
+            },
+        )
+        .await
+        .expect("injected message should be delivered");
+
+        assert_eq!(result.last_delivered_id.as_deref(), Some("1-0"));
+        assert_eq!(
+            result.outcome,
+            DeliveryOutcome::Delivered(CodexSubmitOutcome::injected(false))
+        );
     }
 }
