@@ -62,9 +62,22 @@ emit_system_message() {
   printf '{"continue":true,"systemMessage":"%s"}\n' "$message"
 }
 
+emit_stop_block() {
+  local reason
+  reason="$(json_escape "$1")"
+  printf '{"decision":"block","reason":"%s"}\n' "$reason"
+}
+
+background_has_monitor_task() {
+  printf '%s' "$HOOK_INPUT" |
+    tr '\n' ' ' |
+    grep -Eq '"background_tasks"[[:space:]]*:[[:space:]]*\[[^]]*"type"[[:space:]]*:[[:space:]]*"monitor"'
+}
+
 STATE_DIR="${MAGI_AGENT_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/magi-agent}"
 SESSIONS_DIR="$STATE_DIR/sessions"
 SESSION_ID="$(json_string session_id)"
+HOOK_EVENT_NAME="$(json_string hook_event_name)"
 
 [ -n "$SESSION_ID" ] || exit 0
 monitor_enabled || exit 0
@@ -77,14 +90,26 @@ agent="$(sanitize "$(sed -n '1p' "$session_file" 2>/dev/null)")"
 team="$(sanitize "$(sed -n '2p' "$session_file" 2>/dev/null)")"
 [ -n "$agent" ] && [ -n "$team" ] || exit 0
 
+monitor_script="$PLUGIN_ROOT/hooks/magi-monitor-once.sh"
+monitor_session="$(sanitize "$SESSION_ID")"
+monitor_command="$(sanitize "$monitor_script $monitor_session")"
+monitor_directive="Claude Code Monitor directive: before other work, invoke Monitor with command: $monitor_command ; description: magi inbox once ; persistent: false. When the Monitor finishes, treat each output line as injected magi context in the form <sender>-><recipient>: message, act on it, then invoke the same Monitor command again so this session keeps waiting for the next Redis Pub/Sub message."
+
+if [ "$HOOK_EVENT_NAME" = "Stop" ]; then
+  if background_has_monitor_task; then
+    exit 0
+  fi
+  pid_file="$(monitor_pid_file "$SESSION_ID")"
+  monitor_running "$pid_file" >/dev/null 2>&1 || true
+  emit_stop_block "$monitor_directive"
+  exit 0
+fi
+
 pid_file="$(monitor_pid_file "$SESSION_ID")"
 if monitor_running "$pid_file"; then
   emit_system_message "magi Monitor already running for this Claude Code session."
   exit 0
 fi
 
-monitor_script="$PLUGIN_ROOT/hooks/magi-monitor-once.sh"
-monitor_session="$(sanitize "$SESSION_ID")"
-monitor_command="$(sanitize "$monitor_script $monitor_session")"
-emit_system_message "Claude Code Monitor directive: before other work, invoke Monitor with command: $monitor_command ; description: magi inbox once ; persistent: false. When the Monitor finishes, treat each output line as injected magi context in the form <sender>-><recipient>: message, act on it, then invoke the same Monitor command again so this session keeps waiting for the next Redis Pub/Sub message."
+emit_system_message "$monitor_directive"
 exit 0
