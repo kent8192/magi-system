@@ -12,7 +12,8 @@
   resolved from that plugin root. A `.codex-plugin/` copy remains in the package
   for tooling that inspects the conventional Codex plugin manifest location.
 - Claude Code plugin surface: `integrations/magi-agent-plugin/` (the event-driven
-  `magi-agent` bridge) with its own `.claude-plugin/` manifests.
+  `magi` plugin with the `magi-agent` bridge) with its own `.claude-plugin/`
+  manifests.
 - Plugin distribution: the repository-root `.claude-plugin/marketplace.json`
   exposes the Claude Code `magi` marketplace, while
   `.agents/plugins/marketplace.json` exposes the Codex `magi` marketplace and
@@ -93,7 +94,7 @@ Uniqueness is enforced by claiming each candidate with an atomic `SADD` to
 `magi:team:<team>:agents`; on collision the next adjective is tried, and a final
 `<adjective>-<magi>-<seq>` fallback cannot collide because `<seq>` is unique.
 
-The Claude Code `magi-agent` plugin and the Codex `magi` plugin both drive this
+The Claude Code `magi` plugin and the Codex `magi` plugin both drive this
 lifecycle from session hooks. SessionStart spawns an agent (recording
 `<name, team>` keyed by the runtime session id under the runtime state dir) and
 SessionEnd despawns it. Claude Code uses `MAGI_AGENT_EPHEMERAL=0` to opt out;

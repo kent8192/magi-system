@@ -73,8 +73,8 @@ fi
 # --- Install the magi plugins into Claude Code and Codex (best effort) ---
 # Both CLIs resolve the "magi" marketplace from this checkout and install the
 # plugin that targets their runtime:
-#   - magi-agent → Claude Code (the event-driven bridge under integrations/)
-#   - magi       → Codex (the Redis-backed messaging skill at the repo root)
+#   - magi → Claude Code (the event-driven bridge under integrations/)
+#   - magi → Codex (the Redis-backed messaging skill at the repo root)
 # MAGI_PLUGIN_REPO can point at a GitHub repository for release installs, but
 # the default is local so repository checkouts install the manifests being run.
 MAGI_PLUGIN_REPO="${MAGI_PLUGIN_REPO:-$SCRIPT_DIR}"
@@ -97,16 +97,16 @@ find_codex_cli() {
 }
 
 claude_plugin_installed() {
-  local plugin_id="magi-agent@$MAGI_PLUGIN_MARKETPLACE"
+  local plugin_id="magi@$MAGI_PLUGIN_MARKETPLACE"
   claude plugin list --json 2>/dev/null | grep -Fq "\"id\": \"$plugin_id\""
 }
 
 install_claude_plugin() {
   if ! command -v claude >/dev/null 2>&1; then
-    echo "skip: claude CLI not found; not installing the magi-agent Claude Code plugin"
+    echo "skip: claude CLI not found; not installing the magi Claude Code plugin"
     return 0
   fi
-  echo "installing or updating the magi-agent plugin in Claude Code..."
+  echo "installing or updating the magi plugin in Claude Code..."
   # Replace the marketplace root first so an existing `magi` marketplace cannot
   # keep pointing at an older checkout while this installer reports success.
   claude plugin marketplace remove "$MAGI_PLUGIN_MARKETPLACE" >/dev/null 2>&1 || true
@@ -114,16 +114,19 @@ install_claude_plugin() {
   # Refresh the marketplace before updating so existing plugin installs can pick
   # up the repository's current published version.
   claude plugin marketplace update "$MAGI_PLUGIN_MARKETPLACE" >/dev/null 2>&1 || true
+  # Remove the old Claude Code plugin id from pre-rename installs. The plugin's
+  # state directory remains unchanged and is not removed here.
+  claude plugin uninstall "magi-agent" --scope user --yes >/dev/null 2>&1 || true
   if claude_plugin_installed; then
-    if claude plugin update "magi-agent@$MAGI_PLUGIN_MARKETPLACE" --scope user; then
-      echo "  updated magi-agent@$MAGI_PLUGIN_MARKETPLACE (restart Claude Code to load it)"
+    if claude plugin update "magi@$MAGI_PLUGIN_MARKETPLACE" --scope user; then
+      echo "  updated magi@$MAGI_PLUGIN_MARKETPLACE (restart Claude Code to load it)"
     else
-      echo "warning: failed to update magi-agent@$MAGI_PLUGIN_MARKETPLACE in Claude Code" >&2
+      echo "warning: failed to update magi@$MAGI_PLUGIN_MARKETPLACE in Claude Code" >&2
     fi
-  elif claude plugin install "magi-agent@$MAGI_PLUGIN_MARKETPLACE" --scope user; then
-    echo "  installed magi-agent@$MAGI_PLUGIN_MARKETPLACE (restart Claude Code to load it)"
+  elif claude plugin install "magi@$MAGI_PLUGIN_MARKETPLACE" --scope user; then
+    echo "  installed magi@$MAGI_PLUGIN_MARKETPLACE (restart Claude Code to load it)"
   else
-    echo "warning: failed to install magi-agent@$MAGI_PLUGIN_MARKETPLACE in Claude Code" >&2
+    echo "warning: failed to install magi@$MAGI_PLUGIN_MARKETPLACE in Claude Code" >&2
   fi
 }
 
@@ -164,7 +167,7 @@ Configuration:
   $HOME/.magi
 
 Plugins (best effort, from the "$MAGI_PLUGIN_MARKETPLACE" marketplace):
-  Claude Code: magi-agent  (restart Claude Code, then run /magi-system setup)
+  Claude Code: magi  (restart Claude Code, then run /magi-system setup)
   Codex:       magi
 
 Next:

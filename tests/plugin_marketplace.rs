@@ -157,6 +157,44 @@ fn codex_plugin_declares_session_agent_hooks() {
 }
 
 #[test]
+fn claude_marketplace_exposes_magi_plugin_without_duplicate_names() {
+    let manifest_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(".claude-plugin/marketplace.json");
+    let manifest =
+        std::fs::read_to_string(&manifest_path).expect("Claude marketplace manifest should exist");
+    let manifest: Value =
+        serde_json::from_str(&manifest).expect("Claude marketplace manifest should be valid JSON");
+
+    assert_eq!(manifest["name"], "magi");
+    let plugins = manifest["plugins"]
+        .as_array()
+        .expect("Claude marketplace plugins should be an array");
+    assert_eq!(
+        plugins.len(),
+        1,
+        "Claude marketplace should expose one plugin"
+    );
+    assert_eq!(plugins[0]["name"], "magi");
+    assert_eq!(plugins[0]["source"], "./integrations/magi-agent-plugin");
+
+    let plugin_manifest_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("integrations/magi-agent-plugin/.claude-plugin/plugin.json");
+    let plugin_manifest: Value = serde_json::from_str(
+        &std::fs::read_to_string(plugin_manifest_path).expect("read Claude plugin manifest"),
+    )
+    .expect("Claude plugin manifest should be valid JSON");
+    assert_eq!(plugin_manifest["name"], "magi");
+
+    let nested_marketplace_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("integrations/magi-agent-plugin/.claude-plugin/marketplace.json");
+    let nested_marketplace: Value = serde_json::from_str(
+        &std::fs::read_to_string(nested_marketplace_path).expect("read nested Claude marketplace"),
+    )
+    .expect("nested Claude marketplace should be valid JSON");
+    assert_eq!(nested_marketplace["plugins"][0]["name"], "magi");
+}
+
+#[test]
 fn installer_defaults_plugin_marketplace_to_local_checkout() {
     let installer = Path::new(env!("CARGO_MANIFEST_DIR")).join("install.sh");
     let installer = std::fs::read_to_string(installer).expect("read installer");
@@ -212,12 +250,16 @@ fn installer_updates_claude_plugin_by_marketplace_selector() {
         "Claude marketplace roots should be replaced before installing so local checkout changes refresh"
     );
     assert!(
-        installer.contains(r#"claude plugin update "magi-agent@$MAGI_PLUGIN_MARKETPLACE""#),
+        installer.contains(r#"claude plugin update "magi@$MAGI_PLUGIN_MARKETPLACE""#),
         "Claude updates should use the installed plugin selector including its marketplace"
     );
     assert!(
-        installer.contains("claude plugin install \"magi-agent@$MAGI_PLUGIN_MARKETPLACE\""),
+        installer.contains("claude plugin install \"magi@$MAGI_PLUGIN_MARKETPLACE\""),
         "Claude installs should use the plugin selector including its marketplace"
+    );
+    assert!(
+        installer.contains("claude plugin uninstall \"magi-agent\""),
+        "installer should remove the legacy magi-agent Claude plugin before installing magi"
     );
     assert!(
         installer.contains("claude_plugin_installed()"),

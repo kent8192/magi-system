@@ -1,5 +1,5 @@
 {
-  "name": "magi-agent",
+  "name": "magi",
   "version": "0.1.0",
   "description": "Event-driven bridge that delivers incoming magi messages into a persistent Claude Agent SDK session and auto-replies through the magi CLI.",
   "author": {
