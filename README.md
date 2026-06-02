@@ -1,5 +1,11 @@
 <div align="center">
-  <img src="branding/icon.png" alt="MAGI SYSTEM icon" width="200"/>
+  <p>
+    <img src="docs/screen-record.gif" alt="MAGI SYSTEM screen recording" width="720"/>
+  </p>
+
+  <p>
+    <img src="branding/icon.png" alt="MAGI SYSTEM icon" width="200"/>
+  </p>
 
   <h1>MAGI SYSTEM</h1>
 
