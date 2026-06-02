@@ -228,6 +228,17 @@ fn installer_defaults_plugin_marketplace_to_local_checkout() {
 }
 
 #[test]
+fn installer_copies_setup_entrypoint_to_installed_skill() {
+    let installer = Path::new(env!("CARGO_MANIFEST_DIR")).join("install.sh");
+    let installer = std::fs::read_to_string(installer).expect("read installer");
+
+    assert!(
+        installer.contains(r#"install -m 0755 "$SCRIPT_DIR/setup.sh" "$SKILL_DIR/setup.sh""#),
+        "installer should install setup.sh next to the installed skill"
+    );
+}
+
+#[test]
 fn installer_bootstraps_from_magi_system_when_not_in_checkout() {
     let installer = Path::new(env!("CARGO_MANIFEST_DIR")).join("install.sh");
     let installer = std::fs::read_to_string(installer).expect("read installer");
@@ -253,12 +264,79 @@ fn installer_bootstraps_from_magi_system_when_not_in_checkout() {
 }
 
 #[test]
-fn setup_sh_entrypoint_is_removed() {
+fn setup_sh_entrypoint_sets_up_magi_system() {
     let setup = Path::new(env!("CARGO_MANIFEST_DIR")).join("setup.sh");
 
     assert!(
-        !setup.exists(),
-        "setup.sh compatibility entrypoint should be removed"
+        setup.exists(),
+        "setup.sh should exist as the MAGI SYSTEM setup entrypoint"
+    );
+
+    let setup = std::fs::read_to_string(setup).expect("read setup.sh");
+    assert!(
+        setup.contains("magi redis start"),
+        "setup.sh should start managed Redis through the magi CLI"
+    );
+    assert!(
+        setup.contains("magi team create"),
+        "setup.sh should create the setup team through the magi CLI"
+    );
+    assert!(
+        setup.contains("magi config set identity.active_team"),
+        "setup.sh should set the active team through the magi CLI"
+    );
+}
+
+#[test]
+fn codex_plugin_prompt_hook_calls_setup_entrypoint() {
+    let hook = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".codex-plugin/hooks/magi-codex-prompt-context.sh");
+    let hook = std::fs::read_to_string(hook).expect("read Codex prompt hook");
+
+    assert!(
+        hook.contains("setup_magi_system_requested"),
+        "Codex prompt hook should detect setup MAGI SYSTEM prompts"
+    );
+    assert!(
+        hook.contains("setup.sh"),
+        "Codex prompt hook should invoke setup.sh for setup MAGI SYSTEM prompts"
+    );
+}
+
+#[test]
+fn codex_plugin_packages_setup_entrypoint() {
+    let root_setup = Path::new(env!("CARGO_MANIFEST_DIR")).join("setup.sh");
+    let root_plugin_setup = Path::new(env!("CARGO_MANIFEST_DIR")).join(".codex-plugin/setup.sh");
+    let marketplace_setup = Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/magi/setup.sh");
+    let marketplace_plugin_setup =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/magi/.codex-plugin/setup.sh");
+
+    for setup in [
+        &root_setup,
+        &root_plugin_setup,
+        &marketplace_setup,
+        &marketplace_plugin_setup,
+    ] {
+        assert!(
+            setup.exists(),
+            "{} should include setup.sh",
+            setup.display()
+        );
+    }
+
+    let root_setup = std::fs::read_to_string(root_setup).expect("read root setup.sh");
+    assert_eq!(
+        root_setup,
+        std::fs::read_to_string(root_plugin_setup).expect("read root plugin setup.sh")
+    );
+    assert_eq!(
+        root_setup,
+        std::fs::read_to_string(marketplace_setup).expect("read marketplace setup.sh")
+    );
+    assert_eq!(
+        root_setup,
+        std::fs::read_to_string(marketplace_plugin_setup)
+            .expect("read marketplace plugin setup.sh")
     );
 }
 

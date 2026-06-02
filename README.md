@@ -98,6 +98,9 @@ The repository ships two plugins under the `magi` marketplace:
   `codex` agent, inject magi-system context on each prompt, self-heal a missing
   session record when SessionStart did not fire, and clean the agent up on
   session end or after repeated Redis health-check failures. The hooks also
+  run `setup.sh` when a prompt asks to set up MAGI SYSTEM; that entrypoint
+  starts managed Redis, creates the active setup team when missing, and stores
+  it through the `magi` CLI before normal prompt context is injected. They also
   ensure the managed Codex app-server daemon is running, then launch
   `magi codex bridge` for the current Codex thread so Redis Pub/Sub wakeups
   are first injected into Codex thread history over the Unix control socket's
@@ -149,6 +152,10 @@ In the first Codex terminal, set up MAGI SYSTEM:
 > $magi:magi Set up MAGI SYSTEM.
 ```
 
+The Codex prompt hook treats setup-style MAGI SYSTEM prompts as an instruction
+to run `setup.sh`, then injects the updated magi-system context into the same
+turn.
+
 Open a second terminal and set up another agent. Codex is recommended:
 
 ```text
@@ -167,9 +174,7 @@ If a reply appears in the second terminal, the tutorial is complete.
 ## Quick Start
 
 ```bash
-~/.local/bin/magi redis start
-~/.local/bin/magi team create core
-~/.local/bin/magi config set identity.active_team core
+MAGI_SETUP_TEAM=core ./setup.sh
 ~/.local/bin/magi agent spawn --team core --type codex
 ~/.local/bin/magi invite create --team core
 ```

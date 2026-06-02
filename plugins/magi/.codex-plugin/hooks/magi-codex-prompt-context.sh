@@ -33,6 +33,39 @@ json_string() {
     head -1
 }
 
+setup_magi_system_requested() {
+  local prompt
+  prompt="$(json_string user_prompt | tr '[:upper:]' '[:lower:]')"
+  case "$prompt" in
+    *"setup magi system"* | *"setup magi-system"* | \
+    *"set up magi system"* | *"set up magi-system"* | \
+    *"magi system setup"* | *"magi-system setup"* | \
+    *"magi system"*"セットアップ"* | *"magi-system"*"セットアップ"*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+find_setup_script() {
+  local hook_dir candidate
+  hook_dir="$(cd "$(dirname "$0")" && pwd)"
+  for candidate in \
+    "${MAGI_SETUP_SCRIPT:-}" \
+    "$hook_dir/../../setup.sh" \
+    "$hook_dir/../setup.sh" \
+    "${PLUGIN_ROOT:-}/setup.sh" \
+    "${PLUGIN_ROOT:-}/../setup.sh"; do
+    [ -n "$candidate" ] || continue
+    [ -x "$candidate" ] || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done
+  return 1
+}
+
 now_seconds() {
   if [ -n "${MAGI_CODEX_HEALTH_NOW:-}" ]; then
     printf '%s\n' "$MAGI_CODEX_HEALTH_NOW"
@@ -115,6 +148,19 @@ if [ -z "$SESSION_ID" ]; then
 fi
 PROJECT_CWD="$(json_string cwd)"
 [ -n "$PROJECT_CWD" ] || PROJECT_CWD="${PWD:-}"
+
+setup_state=""
+if setup_magi_system_requested; then
+  if setup_script="$(find_setup_script)"; then
+    if setup_output="$(MAGI_BIN="$MAGI" "$setup_script" 2>&1)"; then
+      setup_state="magi-system setup: ok"
+    else
+      setup_state="magi-system setup: failed: $(sanitize "$setup_output")"
+    fi
+  else
+    setup_state="magi-system setup: missing setup.sh"
+  fi
+fi
 
 redis_state="unavailable"
 agent=""
@@ -274,6 +320,9 @@ else
 fi
 
 ctx="magi-system context. session_id: ${SESSION_ID:-unset}; agent: ${agent:-unset}; team: ${team:-unset}; redis: ${redis_state}; session_record: ${session_record}; codex app-server bridge: ${bridge_state}; state_dir: $(sanitize "$STATE_DIR")."
+if [ -n "$setup_state" ]; then
+  ctx="${ctx} $(sanitize "$setup_state")."
+fi
 if [ -n "$bridge_error" ]; then
   ctx="${ctx%.} last_error: ${bridge_error}."
 fi

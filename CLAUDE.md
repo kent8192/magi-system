@@ -213,7 +213,7 @@ bats tests/
 
 **Shell syntax checks:**
 ```bash
-bash -n scripts/*.sh install.sh uninstall.sh
+bash -n scripts/*.sh install.sh setup.sh uninstall.sh
 ```
 
 **Manual CLI operations:**
@@ -243,7 +243,7 @@ Before reporting completion for code changes:
 1. Run the most relevant checks:
    - `cargo test` for CLI behavior
    - `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`
-   - `bats tests/` and `bash -n scripts/*.sh install.sh uninstall.sh`
+   - `bats tests/` and `bash -n scripts/*.sh install.sh setup.sh uninstall.sh`
      for the retired stubs and shell entry points
 2. Review synchronization:
    - CLI behavior matches `SKILL.md`

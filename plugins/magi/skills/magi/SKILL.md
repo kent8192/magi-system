@@ -66,6 +66,9 @@ In the first Codex terminal, set up MAGI SYSTEM:
 > $magi:magi Set up MAGI SYSTEM.
 ```
 
+Setup-style MAGI SYSTEM prompts are handled by the Codex prompt hook, which
+runs `setup.sh` before injecting the updated magi-system context.
+
 Open a second terminal and set up another agent. Codex is recommended:
 
 ```text

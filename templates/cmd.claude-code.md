@@ -35,6 +35,7 @@ Common actions:
 First-time setup:
 
 ```bash
+MAGI_SETUP_TEAM=<team> ~/.agents/skills/__SKILL_NAME__/setup.sh
 ~/.agents/skills/__SKILL_NAME__/bin/magi redis start
 ~/.agents/skills/__SKILL_NAME__/bin/magi team create <team>
 ~/.agents/skills/__SKILL_NAME__/bin/magi invite create --team <team>

@@ -33,10 +33,13 @@ manual lifecycle control.
 
 ```bash
 magi send <agent-or-team> <message>     # send a message (recipient = agent or team name)
-magi inbox                              # show UNREAD messages, then advance the cursor
-magi history [--team <t>] [--agent <a>] # full durable log (non-destructive)
+magi inbox [--team <t>] [--agent <a>]   # show UNREAD messages, then advance the cursor
+magi history [--team <t>] [--agent <a>] [--limit <n>] # full durable log
 magi team members [--team <t>]          # list members
 magi team list                          # list teams
+magi identity whoami --project <path> --type <type> # resolve project/type identity
+magi actas claim <agent> [--team <t>] [--session <id>] # claim exclusive role use
+magi delivery status --type <type> --project <path> # show delivery mode
 magi watch --format line                # stream incoming messages live (Ctrl-C to stop)
 magi watch --once --format context      # wait for one delivery, then exit
 ```
@@ -62,6 +65,9 @@ In the first Codex terminal, set up MAGI SYSTEM:
 ```text
 > $magi:magi Set up MAGI SYSTEM.
 ```
+
+Setup-style MAGI SYSTEM prompts are handled by the Codex prompt hook, which
+runs `setup.sh` before injecting the updated magi-system context.
 
 Open a second terminal and set up another agent. Codex is recommended:
 

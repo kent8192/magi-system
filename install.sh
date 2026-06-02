@@ -54,6 +54,7 @@ CARGO_TARGET_DIR="$BUILD_DIR" cargo build --release --manifest-path "$SCRIPT_DIR
 mkdir -p "$SKILL_DIR/bin" "$SKILL_DIR/templates" "$SKILL_DIR/agents" "$HOME/.local/bin" "$HOME/.magi"
 install -m 0755 "$BUILD_DIR/release/magi" "$SKILL_BIN"
 install -m 0755 "$BUILD_DIR/release/magi" "$LOCAL_CLI"
+install -m 0755 "$SCRIPT_DIR/setup.sh" "$SKILL_DIR/setup.sh"
 
 sed "s/__SKILL_NAME__/magi/g" "$SCRIPT_DIR/templates/cmd.codex.md" > "$SKILL_DIR/SKILL.md"
 for tmpl in "$SCRIPT_DIR/templates/"cmd.*.md; do
@@ -171,8 +172,8 @@ Plugins (best effort, from the "$MAGI_PLUGIN_MARKETPLACE" marketplace):
   Codex:       magi
 
 Next:
-  1. Run: ~/.local/bin/magi redis start
-  2. Run: ~/.local/bin/magi team create <team>
+  1. Run: MAGI_SETUP_TEAM=<team> $SKILL_DIR/setup.sh
+  2. In Codex, you can also prompt: Setup MAGI SYSTEM
   3. Run: ~/.local/bin/magi invite create --team <team>
 
 MSG

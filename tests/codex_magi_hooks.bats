@@ -45,10 +45,23 @@ if [ "\$1 \$2" = "redis status" ]; then
   [ "\$(cat "$REDIS_STATUS_FILE" 2>/dev/null)" = "down" ] && exit 1
   exit 0
 fi
+if [ "\$1 \$2" = "redis start" ]; then
+  echo "redis-start \$*" >>"$CALLS"
+  printf 'up\n' >"$REDIS_STATUS_FILE"
+  exit 0
+fi
 if [ "\$1" = "config" ] && [ "\$2" = "get" ]; then
   case "\$3" in
     identity.active_team) printf 'testteam' ;;
   esac
+  exit 0
+fi
+if [ "\$1" = "config" ] && [ "\$2" = "set" ]; then
+  echo "config-set \$*" >>"$CALLS"
+  exit 0
+fi
+if [ "\$1" = "team" ] && [ "\$2" = "create" ]; then
+  echo "team-create \$*" >>"$CALLS"
   exit 0
 fi
 if [ "\$1" = "agent" ] && [ "\$2" = "spawn" ]; then
@@ -197,6 +210,22 @@ teardown() {
   [ -f "$current" ]
   [ "$(sed -n '1p' "$current")" = "quiet-melchior" ]
   [ "$(sed -n '2p' "$current")" = "testteam" ]
+}
+
+@test "Codex UserPromptSubmit runs setup.sh for setup MAGI SYSTEM prompt" {
+  CODEX_THREAD_ID=thread-setup run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"Setup MAGI SYSTEM"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"magi-system setup: ok"* ]]
+  grep -q '^redis-start redis start$' "$CALLS"
+  grep -q '^team-create team create testteam$' "$CALLS"
+  grep -q '^config-set config set identity.active_team testteam$' "$CALLS"
+}
+
+@test "Codex UserPromptSubmit runs setup.sh for set up MAGI SYSTEM prompt" {
+  CODEX_THREAD_ID=thread-set-up run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"Set up MAGI SYSTEM."}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"magi-system setup: ok"* ]]
+  grep -q '^redis-start redis start$' "$CALLS"
 }
 
 @test "Codex UserPromptSubmit reports bridge status sidecar" {
