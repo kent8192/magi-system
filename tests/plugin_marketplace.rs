@@ -157,6 +157,28 @@ fn codex_plugin_declares_session_agent_hooks() {
 }
 
 #[test]
+fn codex_plugin_hooks_use_no_timeout_for_monitoring_context() {
+    for hooks_path in [
+        ".codex-plugin/hooks/hooks.json",
+        "plugins/magi/hooks/hooks.json",
+        "plugins/magi/.codex-plugin/hooks/hooks.json",
+    ] {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(hooks_path);
+        let hooks: Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).expect("read Codex hooks config"))
+                .expect("Codex hooks config should be valid JSON");
+
+        for event in ["SessionStart", "UserPromptSubmit", "SessionEnd"] {
+            let handler = &hooks["hooks"][event][0]["hooks"][0];
+            assert_eq!(
+                handler["timeout"], "no-timeout",
+                "{hooks_path} {event} should not time out monitoring context"
+            );
+        }
+    }
+}
+
+#[test]
 fn claude_marketplace_exposes_magi_plugin_without_duplicate_names() {
     let manifest_path =
         Path::new(env!("CARGO_MANIFEST_DIR")).join(".claude-plugin/marketplace.json");

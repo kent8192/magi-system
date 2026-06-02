@@ -141,6 +141,11 @@ agent, the Monitor process exits with `<sender>-><recipient>: message`; Claude
 Code handles that completed background output and relaunches the same Monitor
 command for the next message.
 
+Stop hooks additionally inspect Claude Code's `background_tasks` registry. If no
+task with `type: "monitor"` is present for an active session, the hook returns a
+blocking decision with the same Monitor launch directive so shutdown does not
+complete before at least one Monitor is waiting.
+
 Hooks also keep a small `<session>.health` sidecar next to each recorded
 ephemeral agent. Failed Redis health checks are counted without sleeping in the
 hook path: the next due check is scheduled with a 1s, 2s, then 4s backoff. After

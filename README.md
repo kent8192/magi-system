@@ -110,9 +110,11 @@ The repository ships two plugins under the `magi` marketplace:
   `integrations/magi-agent-plugin/` that turns incoming magi messages into a
   live Claude session. Claude Code hooks also keep at least one Monitor job
   waiting for the session inbox by asking Claude Code to run
-  `magi watch --once --format context` whenever no live Monitor pid is recorded;
-  Redis wakeups surface as `<sender>-><recipient>: message`, and the session
-  relaunches the Monitor after acting on the message.
+  `magi watch --once --format context` whenever no live Monitor pid is recorded.
+  The Stop hook also checks Claude Code's `background_tasks` registry and blocks
+  stopping when no `monitor` task is present. Redis wakeups surface as
+  `<sender>-><recipient>: message`, and the session relaunches the Monitor after
+  acting on the message.
 
 For checkout-based development installs, `./install.sh` installs or updates both
 by registering the current checkout as the marketplace:

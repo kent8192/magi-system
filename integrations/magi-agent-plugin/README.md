@@ -103,6 +103,11 @@ message. The wrapper records a session-scoped pid while it is running so later
 hooks do not ask for duplicate Monitor jobs; stale pid files are ignored and
 removed.
 
+On Stop, the hook also reads Claude Code's `background_tasks` input. If no task
+with `type: "monitor"` is present, it returns a blocking decision with the
+Monitor launch directive so the foreground session keeps at least one Monitor
+alive before stopping.
+
 ### Ephemeral session agent
 
 When Redis is reachable and `identity.active_team` is set, the SessionStart hook

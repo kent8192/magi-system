@@ -155,6 +155,48 @@ teardown() {
   [ ! -f "$MAGI_AGENT_STATE_DIR/monitors/sess-stale.pid" ]
 }
 
+@test "Stop hook blocks stopping when no Monitor background task exists" {
+  mkdir -p "$MAGI_AGENT_STATE_DIR/sessions"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_AGENT_STATE_DIR/sessions/sess-stop.agent"
+
+  run bash "$HOOKS/magi-monitor-ensure.sh" <<'EOF'
+{"session_id":"sess-stop","hook_event_name":"Stop","background_tasks":[]}
+EOF
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"decision":"block"'* ]]
+  [[ "$output" == *"Claude Code Monitor directive"* ]]
+  [[ "$output" == *"magi-monitor-once.sh sess-stop"* ]]
+}
+
+@test "Stop hook blocks stopping when pid exists but no Monitor background task exists" {
+  mkdir -p "$MAGI_AGENT_STATE_DIR/sessions" "$MAGI_AGENT_STATE_DIR/monitors"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_AGENT_STATE_DIR/sessions/sess-stop-pid.agent"
+  sleep 10 &
+  local running_pid="$!"
+  printf '%s\n' "$running_pid" >"$MAGI_AGENT_STATE_DIR/monitors/sess-stop-pid.pid"
+
+  run bash "$HOOKS/magi-monitor-ensure.sh" <<'EOF'
+{"session_id":"sess-stop-pid","hook_event_name":"Stop","background_tasks":[]}
+EOF
+  kill "$running_pid" 2>/dev/null || true
+  wait "$running_pid" 2>/dev/null || true
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"decision":"block"'* ]]
+  [[ "$output" == *"magi-monitor-once.sh sess-stop-pid"* ]]
+}
+
+@test "Stop hook allows stopping when a Monitor background task exists" {
+  mkdir -p "$MAGI_AGENT_STATE_DIR/sessions"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_AGENT_STATE_DIR/sessions/sess-stop-running.agent"
+
+  run bash "$HOOKS/magi-monitor-ensure.sh" <<'EOF'
+{"session_id":"sess-stop-running","hook_event_name":"Stop","background_tasks":[{"id":"task-1","type":"monitor","status":"running","server":"magi","tool":"watch"}]}
+EOF
+  [ "$status" -eq 0 ]
+  [ "$output" = "" ]
+}
+
 @test "Claude Code hooks register Monitor ensure phases" {
   grep -q '"UserPromptSubmit"' "$HOOKS/hooks.json"
   grep -q '"PostToolUse"' "$HOOKS/hooks.json"

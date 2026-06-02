@@ -41,7 +41,8 @@ magi send ──▶ Redis Pub/Sub ──▶ `magi watch --format json`
   MAGI agent for the session (`magi agent spawn`) unless `MAGI_AGENT_EPHEMERAL=0`.
 - `hooks/magi-monitor-ensure.sh` and `hooks/magi-monitor-once.sh` — hook-driven
   Monitor delivery that keeps at least one Claude Code Monitor waiting for the
-  session inbox when Redis and the session agent are available.
+  session inbox when Redis and the session agent are available; Stop hooks block
+  when Claude Code reports no `monitor` background task.
 - `hooks/magi-session-end.sh` — a SessionEnd hook that despawns the ephemeral
   agent (`magi agent despawn`).
 - Sibling skill `magi-messaging` — manual magi CLI usage (send/inbox/history) in-session.
