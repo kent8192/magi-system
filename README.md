@@ -149,6 +149,9 @@ In the first Codex terminal, set up MAGI SYSTEM:
 > $magi:magi Set up MAGI SYSTEM.
 ```
 
+Close the first Codex terminal, then open it again in the same project so the
+first agent wakes up with the MAGI SYSTEM hooks active.
+
 Open a second terminal and set up another agent. Codex is recommended:
 
 ```text
