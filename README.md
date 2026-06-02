@@ -1,6 +1,8 @@
 <div align="center">
   <img src="branding/icon.png" alt="MAGI SYSTEM icon" width="200"/>
 
+  <img src="docs/screen-record.gif" alt="MAGI SYSTEM screen recording" width="720"/>
+
   <h1>MAGI SYSTEM</h1>
 
   <h3>Redis-backed cross-agent messaging for CLI AI agents</h3>
