@@ -55,6 +55,29 @@ magi watch --once --format context      # wait for one delivery, then exit
   for this session's agent name; the CLI has no persistent active-agent
   fallback.
 
+## Codex tutorial
+
+In the first Codex terminal, set up MAGI SYSTEM:
+
+```text
+> $magi:magi Set up MAGI SYSTEM.
+```
+
+Open a second terminal and set up another agent. Codex is recommended:
+
+```text
+> $magi:magi What is your agent name on MAGI SYSTEM?
+```
+
+Write down the second agent's name, then send a message from the second
+terminal to the first agent:
+
+```text
+> $magi:magi Send this message to <first agent name>: `Hey, I'm <second agent name>. What's your name? Please reply.`
+```
+
+If a reply appears in the second terminal, the tutorial is complete.
+
 ## Onboarding another agent
 
 ```bash
@@ -86,11 +109,12 @@ magi config set identity.active_team <team>   # join does not set the active tea
   launches `magi codex bridge --thread <session-id>` unless
   `MAGI_CODEX_APP_SERVER_BRIDGE=0`. The bridge subscribes to Redis Pub/Sub for
   this session agent, consumes unread inbox messages, and sends each
-  `<sender>-><recipient>: message` line to the Codex app-server with
-  `turn/start`. If Codex rejects the new turn because another turn is active,
-  the bridge falls back to `thread/inject_items` so the message is still present
-  in model-visible thread history. Prompt hooks perform the same daemon check
-  before restarting a missing bridge and report the bridge as starting, running,
+  `<sender>-><recipient>: message` line to the Codex app-server over the Unix
+  control socket's WebSocket transport with `turn/start`. If Codex rejects the
+  new turn because another turn is active, the bridge falls back to
+  `thread/inject_items` so the message is still present in model-visible thread
+  history. Prompt hooks perform the same daemon check before restarting a
+  missing bridge and report the bridge as starting, running, delivering,
   retrying, unsupported, stopped, or disabled. Set `MAGI_CODEX_CLI` when the
   desired Codex CLI is not the first `codex` on PATH, set
   `MAGI_CODEX_APP_SERVER_SOCKET` when the bridge should use a specific Unix
