@@ -54,7 +54,7 @@ fn builds_turn_start_request_with_cwd() {
 }
 
 #[test]
-fn builds_user_message_fallback_injection_request() {
+fn builds_user_message_thread_injection_request() {
     let request = build_inject_items_request("thread-123", "1-0", "alice->bob: status?");
 
     assert_eq!(request["method"], "thread/inject_items");
@@ -94,42 +94,8 @@ fn missing_control_socket_is_reported_as_unsupported_bridge_status() {
 }
 
 #[tokio::test]
-async fn submit_to_codex_falls_back_to_inject_items_when_turn_start_fails() {
-    let (_temp, socket, server) = spawn_fake_app_server(5, true).await;
-
-    submit_to_codex_with_socket(
-        "unused-codex",
-        &socket,
-        "thread-123",
-        Some("/tmp/project"),
-        "1-0",
-        "alice->bob: status?",
-    )
-    .await
-    .expect("fallback injection succeeds");
-
-    let calls = server.await.expect("server task succeeds");
-    let methods: Vec<_> = calls
-        .iter()
-        .filter_map(|call| call["method"].as_str())
-        .collect();
-    assert_eq!(
-        methods,
-        [
-            "initialize",
-            "initialized",
-            "thread/resume",
-            "turn/start",
-            "thread/inject_items"
-        ]
-    );
-    assert_eq!(calls[0]["params"]["capabilities"], Value::Null);
-    assert!(calls[2]["params"].get("excludeTurns").is_none());
-}
-
-#[tokio::test]
-async fn submit_to_codex_uses_explicit_unix_websocket_socket() {
-    let (_temp, socket, server) = spawn_fake_app_server(4, false).await;
+async fn submit_to_codex_starts_turn_after_injecting_thread_item() {
+    let (_temp, socket, server) = spawn_fake_app_server(5, AppServerBehavior::AllOk).await;
 
     submit_to_codex_with_socket(
         "unused-codex",
@@ -143,15 +109,104 @@ async fn submit_to_codex_uses_explicit_unix_websocket_socket() {
     .expect("delivery succeeds");
 
     let calls = server.await.expect("server task succeeds");
-    assert_eq!(calls[0]["method"], "initialize");
-    assert_eq!(calls[1]["method"], "initialized");
-    assert_eq!(calls[2]["method"], "thread/resume");
-    assert_eq!(calls[3]["method"], "turn/start");
+    let methods: Vec<_> = calls
+        .iter()
+        .filter_map(|call| call["method"].as_str())
+        .collect();
+    assert_eq!(
+        methods,
+        [
+            "initialize",
+            "initialized",
+            "thread/resume",
+            "thread/inject_items",
+            "turn/start"
+        ]
+    );
+    assert_eq!(calls[0]["params"]["capabilities"], Value::Null);
+    assert!(calls[2]["params"].get("excludeTurns").is_none());
+}
+
+#[tokio::test]
+async fn submit_to_codex_succeeds_when_turn_start_fails_after_injection() {
+    let (_temp, socket, server) = spawn_fake_app_server(5, AppServerBehavior::TurnStartFails).await;
+
+    submit_to_codex_with_socket(
+        "unused-codex",
+        &socket,
+        "thread-123",
+        Some("/tmp/project"),
+        "1-0",
+        "alice->bob: status?",
+    )
+    .await
+    .expect("injection succeeds even when turn start fails");
+
+    let calls = server.await.expect("server task succeeds");
+    let methods: Vec<_> = calls
+        .iter()
+        .filter_map(|call| call["method"].as_str())
+        .collect();
+    assert_eq!(
+        methods,
+        [
+            "initialize",
+            "initialized",
+            "thread/resume",
+            "thread/inject_items",
+            "turn/start"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn submit_to_codex_fails_without_turn_start_when_injection_fails() {
+    let (_temp, socket, server) =
+        spawn_fake_app_server(4, AppServerBehavior::InjectItemsFails).await;
+
+    let error = submit_to_codex_with_socket(
+        "unused-codex",
+        &socket,
+        "thread-123",
+        Some("/tmp/project"),
+        "1-0",
+        "alice->bob: status?",
+    )
+    .await
+    .expect_err("failed injection must fail delivery");
+
+    assert!(
+        error
+            .to_string()
+            .contains("codex app-server thread/inject_items failed"),
+        "{error}"
+    );
+    let calls = server.await.expect("server task succeeds");
+    let methods: Vec<_> = calls
+        .iter()
+        .filter_map(|call| call["method"].as_str())
+        .collect();
+    assert_eq!(
+        methods,
+        [
+            "initialize",
+            "initialized",
+            "thread/resume",
+            "thread/inject_items"
+        ]
+    );
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AppServerBehavior {
+    AllOk,
+    TurnStartFails,
+    InjectItemsFails,
 }
 
 async fn spawn_fake_app_server(
     expected_messages: usize,
-    fail_turn_start: bool,
+    behavior: AppServerBehavior,
 ) -> (TempDir, PathBuf, tokio::task::JoinHandle<Vec<Value>>) {
     let temp = tempfile::tempdir().expect("socket dir");
     let socket = temp.path().join("app-server.sock");
@@ -164,10 +219,14 @@ async fn spawn_fake_app_server(
             let message = read_client_json_frame(&mut stream).await;
             let method = message["method"].as_str().unwrap_or_default().to_string();
             if let Some(id) = message.get("id").and_then(Value::as_u64) {
-                let response = if fail_turn_start && method == "turn/start" {
-                    json!({ "id": id, "error": { "message": "active turn" } })
-                } else {
-                    json!({ "id": id, "result": {} })
+                let response = match (behavior, method.as_str()) {
+                    (AppServerBehavior::TurnStartFails, "turn/start") => {
+                        json!({ "id": id, "error": { "message": "active turn" } })
+                    }
+                    (AppServerBehavior::InjectItemsFails, "thread/inject_items") => {
+                        json!({ "id": id, "error": { "message": "inject failed" } })
+                    }
+                    _ => json!({ "id": id, "result": {} }),
                 };
                 write_server_json_frame(&mut stream, &response).await;
             }

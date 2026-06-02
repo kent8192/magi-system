@@ -11,7 +11,8 @@ first.
 Codex hooks ensure the managed app-server daemon is running before starting or
 restarting the live `magi codex bridge`, unless disabled with
 `MAGI_CODEX_APP_SERVER_DAEMON=0`. The bridge uses the Codex Unix control
-socket's WebSocket transport.
+socket's WebSocket transport, injects messages into thread history first, and
+only then best-effort starts a Codex turn.
 
 Recommended default action (non-interactive):
 
