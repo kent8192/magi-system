@@ -53,10 +53,22 @@ hooks = true
 plugin_hooks = true
 ```
 
-This repository does not currently ship a `.devcontainer/` definition. If you
-run magi from your own Dev Container, make the Docker daemon available inside
-the container, install or mount Codex Standalone there, and keep the Codex
-configuration that enables `hooks` and `plugin_hooks` visible to that runtime.
+The repository devcontainer mounts the Docker socket plus the host MAGI and
+Codex runtime state needed for immediate Codex injection:
+
+- host `~/.magi` as container `/home/vscode/.magi`
+- host `~/.local/state/magi-codex` as container
+  `/home/vscode/.local/state/magi-codex`
+- host `~/.codex/app-server-control` as container
+  `/home/vscode/.codex/app-server-control`
+
+It also sets `MAGI_CODEX_STATE_DIR` and `MAGI_CODEX_APP_SERVER_SOCKET` to the
+container paths above. With those mounts, `magi codex bridge` in the
+devcontainer uses the same Redis credentials, session records, and Codex
+app-server control socket as the host runtime. If the mounts are absent or the
+host Codex app-server daemon is not running, bridge delivery remains safe: the
+bridge reports `unsupported` with the app-server socket path instead of
+advancing the inbox cursor.
 
 Override the bootstrap source with `MAGI_BOOTSTRAP_REPO_URL`:
 
@@ -125,6 +137,29 @@ plugins from GitHub instead of the local checkout. Standalone bootstrap mode
 uses that GitHub plugin source by default so plugin marketplaces do not point at
 the temporary clone. After installing into Claude Code, restart it and run
 `/magi-system setup`.
+
+## Codex Tutorial
+
+In the first Codex terminal, set up MAGI SYSTEM:
+
+```text
+> $magi:magi Set up MAGI SYSTEM.
+```
+
+Open a second terminal and set up another agent. Codex is recommended:
+
+```text
+> $magi:magi What is your agent name on MAGI SYSTEM?
+```
+
+Write down the second agent's name, then send a message from the second
+terminal to the first agent:
+
+```text
+> $magi:magi Send this message to <first agent name>: `Hey, I'm <second agent name>. What's your name? Please reply.`
+```
+
+If a reply appears in the second terminal, the tutorial is complete.
 
 ## Quick Start
 

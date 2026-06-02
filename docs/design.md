@@ -157,6 +157,10 @@ successful delivery. `delivering` means the bridge is actively submitting unread
 messages to the app-server. If the Codex app-server control socket is missing,
 the status becomes `unsupported` and the inbox cursor is not advanced;
 `stdio://` app-server processes cannot be reached by this external bridge.
+Devcontainer use follows the same model: immediate injection requires the
+container to see the host MAGI config/state, Codex hook state, and app-server
+control socket. If any of those runtime surfaces are not reachable, the bridge
+uses the same `unsupported` status rather than acknowledging delivery.
 Other delivery failures remain `retrying` with the last error until a later
 delivery succeeds.
 Delivery failures are retried without acknowledging the failed message: when a
