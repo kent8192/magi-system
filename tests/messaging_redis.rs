@@ -315,8 +315,10 @@ async fn history_can_return_all_messages_or_filter_by_agent(
         .await
         .unwrap();
 
-    let all = history_with_url(&url, &team, None).await.unwrap();
-    let bob_only = history_with_url(&url, &team, Some(&bob)).await.unwrap();
+    let all = history_with_url(&url, &team, None, None).await.unwrap();
+    let bob_only = history_with_url(&url, &team, Some(&bob), None)
+        .await
+        .unwrap();
 
     assert_eq!(all.len(), 2);
     assert_eq!(bob_only.len(), 2);
@@ -331,7 +333,7 @@ async fn history_missing_stream_returns_empty_list(#[future(awt)] redis_fixture:
     let url = redis_fixture.url().to_string();
     let team = unique_name("team-msg-empty-history");
 
-    let messages = history_with_url(&url, &team, None).await.unwrap();
+    let messages = history_with_url(&url, &team, None, None).await.unwrap();
 
     assert!(messages.is_empty());
 }

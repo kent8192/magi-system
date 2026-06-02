@@ -53,10 +53,22 @@ hooks = true
 plugin_hooks = true
 ```
 
-This repository does not currently ship a `.devcontainer/` definition. If you
-run magi from your own Dev Container, make the Docker daemon available inside
-the container, install or mount Codex Standalone there, and keep the Codex
-configuration that enables `hooks` and `plugin_hooks` visible to that runtime.
+The repository devcontainer mounts the Docker socket plus the host MAGI and
+Codex runtime state needed for immediate Codex injection:
+
+- host `~/.magi` as container `/home/vscode/.magi`
+- host `~/.local/state/magi-codex` as container
+  `/home/vscode/.local/state/magi-codex`
+- host `~/.codex/app-server-control` as container
+  `/home/vscode/.codex/app-server-control`
+
+It also sets `MAGI_CODEX_STATE_DIR` and `MAGI_CODEX_APP_SERVER_SOCKET` to the
+container paths above. With those mounts, `magi codex bridge` in the
+devcontainer uses the same Redis credentials, session records, and Codex
+app-server control socket as the host runtime. If the mounts are absent or the
+host Codex app-server daemon is not running, bridge delivery remains safe: the
+bridge reports `unsupported` with the app-server socket path instead of
+advancing the inbox cursor.
 
 Override the bootstrap source with `MAGI_BOOTSTRAP_REPO_URL`:
 
@@ -96,10 +108,11 @@ The repository ships two plugins under the `magi` marketplace:
   `unsupported`.
 - **`magi-agent` (Claude Code)** — the event-driven bridge under
   `integrations/magi-agent-plugin/` that turns incoming magi messages into a
-  live Claude session. When that bridge is stopped, the SessionStart hook tells
-  Claude Code to launch a Monitor job running `magi watch --once --format
-  context`; Redis wakeups surface as `<sender>-><recipient>: message`, and the
-  session relaunches the Monitor after acting on the message.
+  live Claude session. Claude Code hooks also keep at least one Monitor job
+  waiting for the session inbox by asking Claude Code to run
+  `magi watch --once --format context` whenever no live Monitor pid is recorded;
+  Redis wakeups surface as `<sender>-><recipient>: message`, and the session
+  relaunches the Monitor after acting on the message.
 
 For checkout-based development installs, `./install.sh` installs or updates both
 by registering the current checkout as the marketplace:
@@ -125,6 +138,29 @@ plugins from GitHub instead of the local checkout. Standalone bootstrap mode
 uses that GitHub plugin source by default so plugin marketplaces do not point at
 the temporary clone. After installing into Claude Code, restart it and run
 `/magi-system setup`.
+
+## Codex Tutorial
+
+In the first Codex terminal, set up MAGI SYSTEM:
+
+```text
+> $magi:magi Set up MAGI SYSTEM.
+```
+
+Open a second terminal and set up another agent. Codex is recommended:
+
+```text
+> $magi:magi What is your agent name on MAGI SYSTEM?
+```
+
+Write down the second agent's name, then send a message from the second
+terminal to the first agent:
+
+```text
+> $magi:magi Send this message to <first agent name>: `Hey, I'm <second agent name>. What's your name? Please reply.`
+```
+
+If a reply appears in the second terminal, the tutorial is complete.
 
 ## Quick Start
 
@@ -154,6 +190,7 @@ magi redis start|status|stop|reset
 magi team create <team>
 magi team list
 magi team members [--team <team>]
+magi team rename <old-team> <new-team>
 magi invite create --team <team> [--ttl 24h]
 magi invite list --team <team>
 magi invite revoke <invite_id>
@@ -161,14 +198,26 @@ magi join --invite <token>
 magi agent name
 magi agent spawn [--team <team>] [--type <type>]
 magi agent despawn [--team <team>] [--name <agent>]
+magi agent rename --team <team> <old-name> <new-name>
+magi registration add --team <team> --agent <agent> --type <type> --project <path> [--session <id>]
+magi registration remove --team <team> --agent <agent>
+magi registration reset --project <path> --type <type> [--agent <agent>] [--session <id>]
+magi identity list --project <path> --type <type>
+magi identity whoami --project <path> --type <type>
+magi actas claim|release|status <agent> [--team <team>] [--session <id>]
+magi actas gc
+magi delivery set <monitor|turn|both|off> --type <type> --project <path>
+magi delivery status --type <type> --project <path>
+magi delivery restart|stop --type <type> --project <path>
 magi send <agent> <message>
-magi inbox
-magi history [--team <team>] [--agent <agent>]
+magi inbox [--team <team>] [--agent <agent>] [--quiet] [--hook-format codex|claude-code]
+magi history [--team <team>] [--agent <agent>] [--limit <n>]
 magi watch [--format line|json|context] [--once]
 magi codex bridge [--thread <thread-id>] [--cwd <dir>] [--codex <codex-cli>] [--socket <sock>]
 magi ssh start|status|stop
 magi config get <key>
 magi config set <key> <value>
+magi config show
 ```
 
 Inside a runtime session, `send`, `inbox`, `history`, `watch`, and `agent name`
@@ -178,6 +227,20 @@ recover the hook-derived agent name even when the Codex session id is not passed
 through the subprocess environment. Persistent config never stores an active
 agent, so concurrent Codex or Claude Code sessions in the same `$HOME` cannot
 overwrite each other's MAGI agent names.
+
+Direct registration commands manage explicit `(team, agent, type, project)`
+tuples in Redis. `identity list` and `identity whoami` inspect those tuples for
+operator discovery without adding a persistent active-agent fallback.
+
+`actas` commands provide a Redis TTL-backed exclusive role claim for a
+`(team, agent, session)` pair. A different live session cannot consume that
+agent's inbox through `inbox`, `watch`, or `codex bridge` while the role is
+claimed. `agent rename` and `team rename` move roster, registration, and cursor
+state; stream history is left immutable and therefore retains historical names.
+
+`delivery` commands store runtime delivery mode configuration for a
+`(type, project)` pair. They are explicit operator commands and do not silently
+edit user runtime configuration outside that command path.
 
 Session hooks track Redis health for recorded ephemeral agents without blocking
 startup or prompt handling. Three due consecutive failed health checks mark a

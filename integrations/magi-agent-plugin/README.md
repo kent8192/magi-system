@@ -62,7 +62,9 @@ magi-agent-plugin/
 │   └── node_modules/            # installed by `setup` (gitignored)
 ├── commands/magi-system.md      # /magi-system slash command
 ├── hooks/
-│   ├── hooks.json               # SessionStart + SessionEnd hook registration
+│   ├── hooks.json               # lifecycle + Monitor ensure hook registration
+│   ├── magi-monitor-ensure.sh   # asks Claude Code to start Monitor if absent
+│   ├── magi-monitor-once.sh     # waits for one inbox delivery
 │   ├── magi-session-start.sh    # startup: report state, spawn an ephemeral agent
 │   └── magi-session-end.sh      # shutdown: despawn the agent
 └── skills/
@@ -83,8 +85,10 @@ and it never boots Redis or the bridge unless you opt in:
 
 ### Live Monitor delivery
 
-When Redis is reachable, a session agent exists, and the auto-reply bridge is
-not running, the SessionStart hook asks Claude Code to launch a Monitor job:
+When Redis is reachable and a session agent exists, SessionStart,
+UserPromptSubmit, PostToolUse, and Stop hooks ensure that at least one Monitor
+job is waiting for the session inbox. If no live Monitor pid is recorded, the
+hook asks Claude Code to launch:
 
 ```bash
 hooks/magi-monitor-once.sh <claude-session-id>
@@ -95,8 +99,9 @@ background until Redis Pub/Sub announces a message for this session's MAGI
 agent, prints each delivered line as `<sender>-><recipient>: message`, and
 exits. Claude Code should treat the completed Monitor output as injected magi
 context, act on it, and launch the same Monitor command again for the next
-message. If `/magi-system start` is running, the hook skips this directive so
-the bridge remains the only consumer of incoming messages.
+message. The wrapper records a session-scoped pid while it is running so later
+hooks do not ask for duplicate Monitor jobs; stale pid files are ignored and
+removed.
 
 ### Ephemeral session agent
 

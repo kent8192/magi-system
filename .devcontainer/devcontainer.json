@@ -8,8 +8,15 @@
   "workspaceFolder": "/workspaces/magi",
   "remoteUser": "vscode",
   "mounts": [
-    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
+    "source=${localEnv:HOME}/.magi,target=/home/vscode/.magi,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.local/state/magi-codex,target=/home/vscode/.local/state/magi-codex,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.codex/app-server-control,target=/home/vscode/.codex/app-server-control,type=bind,consistency=cached"
   ],
+  "remoteEnv": {
+    "MAGI_CODEX_STATE_DIR": "/home/vscode/.local/state/magi-codex",
+    "MAGI_CODEX_APP_SERVER_SOCKET": "/home/vscode/.codex/app-server-control/app-server-control.sock"
+  },
   "customizations": {
     "vscode": {
       "extensions": [

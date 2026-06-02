@@ -80,9 +80,9 @@ pub async fn run() -> Result<()> {
         };
 
         let result = match command {
-            ReplCommand::Inbox => crate::messaging::inbox().await,
+            ReplCommand::Inbox => crate::messaging::inbox(None, None, false, None).await,
             ReplCommand::Send { to, body } => crate::messaging::send(to, vec![body]).await,
-            ReplCommand::History { agent } => crate::messaging::history(None, agent).await,
+            ReplCommand::History { agent } => crate::messaging::history(None, agent, None).await,
             ReplCommand::Team => crate::team::members(None).await,
             // Return immediately; the loop terminates cleanly.
             ReplCommand::Quit => return Ok(()),

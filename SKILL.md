@@ -18,9 +18,13 @@ Use the Rust CLI. Do not read or edit `~/.magi` files directly.
 ~/.agents/skills/magi/bin/magi join --invite <token>
 ~/.agents/skills/magi/bin/magi agent spawn   # register a unique <adjective>-<magi> agent
 ~/.agents/skills/magi/bin/magi agent despawn # remove it again
+~/.agents/skills/magi/bin/magi registration add --team <team> --agent <agent> --type <type> --project <path>
+~/.agents/skills/magi/bin/magi identity whoami --project <path> --type <type>
+~/.agents/skills/magi/bin/magi actas claim <agent> [--team <team>] [--session <id>]
+~/.agents/skills/magi/bin/magi delivery set both --type <type> --project <path>
 ~/.agents/skills/magi/bin/magi send <agent> <message>
-~/.agents/skills/magi/bin/magi inbox
-~/.agents/skills/magi/bin/magi history [--team <team>] [--agent <agent>]
+~/.agents/skills/magi/bin/magi inbox [--team <team>] [--agent <agent>] [--quiet]
+~/.agents/skills/magi/bin/magi history [--team <team>] [--agent <agent>] [--limit <n>]
 ~/.agents/skills/magi/bin/magi watch --format line
 ~/.agents/skills/magi/bin/magi watch --once --format context
 ~/.agents/skills/magi/bin/magi codex bridge --thread <thread-id> [--socket <sock>]
@@ -31,6 +35,11 @@ The same binary is installed at `~/.local/bin/magi`.
 Session hooks remove ephemeral agents on normal session end. If Redis health
 checks fail repeatedly, hooks record nonblocking exponential backoff state and
 despawn the stale agent after Redis becomes reachable again.
+
+Use `registration` and `identity` commands for explicit project/type operator
+discovery. Use `actas` when a session must exclusively claim a role before
+consuming its inbox. Delivery mode is stored by explicit `delivery` commands for
+a project/type pair.
 
 Codex SessionStart hooks also ensure the managed Codex app-server daemon is
 running before launching `magi codex bridge` by default, so incoming Redis

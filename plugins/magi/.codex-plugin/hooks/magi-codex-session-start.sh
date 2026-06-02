@@ -135,9 +135,10 @@ daemon_auto_on() {
 
 codex_daemon_running() {
   local codex_cli="${MAGI_CODEX_CLI:-codex}"
+  local status
   command -v "$codex_cli" >/dev/null 2>&1 || return 1
-  "$codex_cli" app-server daemon version 2>/dev/null |
-    grep -q '"status"[[:space:]]*:[[:space:]]*"running"'
+  status="$("$codex_cli" app-server daemon version 2>/dev/null)" || return 1
+  printf '%s\n' "$status" | grep -q '"status"[[:space:]]*:[[:space:]]*"running"'
 }
 
 ensure_codex_daemon() {

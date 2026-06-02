@@ -55,6 +55,29 @@ magi watch --once --format context      # wait for one delivery, then exit
   for this session's agent name; the CLI has no persistent active-agent
   fallback.
 
+## Codex tutorial
+
+In the first Codex terminal, set up MAGI SYSTEM:
+
+```text
+> $magi:magi Set up MAGI SYSTEM.
+```
+
+Open a second terminal and set up another agent. Codex is recommended:
+
+```text
+> $magi:magi What is your agent name on MAGI SYSTEM?
+```
+
+Write down the second agent's name, then send a message from the second
+terminal to the first agent:
+
+```text
+> $magi:magi Send this message to <first agent name>: `Hey, I'm <second agent name>. What's your name? Please reply.`
+```
+
+If a reply appears in the second terminal, the tutorial is complete.
+
 ## Onboarding another agent
 
 ```bash
