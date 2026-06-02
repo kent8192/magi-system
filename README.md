@@ -106,7 +106,7 @@ The repository ships two plugins under the `magi` marketplace:
   failures keep the bridge in `retrying` until a later injection succeeds; Codex
   runtimes without a reachable app-server control socket are reported as
   `unsupported`.
-- **`magi-agent` (Claude Code)** — the event-driven bridge under
+- **`magi` (Claude Code)** — the event-driven bridge under
   `integrations/magi-agent-plugin/` that turns incoming magi messages into a
   live Claude session. Claude Code hooks also keep at least one Monitor job
   waiting for the session inbox by asking Claude Code to run
@@ -123,8 +123,8 @@ claude plugin marketplace remove magi
 claude plugin marketplace add /absolute/path/to/magi
 claude plugin marketplace update magi
 claude plugin list --json  # installer uses this to choose update vs install
-claude plugin update magi-agent@magi  # when already installed
-claude plugin install magi-agent@magi # when not yet installed
+claude plugin update magi@magi  # when already installed
+claude plugin install magi@magi # when not yet installed
 
 # Codex
 codex plugin marketplace remove magi

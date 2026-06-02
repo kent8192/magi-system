@@ -1,4 +1,4 @@
-# magi-agent (Claude Code plugin)
+# magi (Claude Code plugin)
 
 Event-driven bridge that turns **incoming magi messages into a live Claude
 session**. The moment a teammate sends you a magi message, its text becomes a new
@@ -23,7 +23,7 @@ effort) from the current checkout's `magi` marketplace:
 
 ```bash
 claude plugin marketplace add /absolute/path/to/magi
-claude plugin install magi-agent@magi
+claude plugin install magi@magi
 # restart Claude Code
 ```
 
@@ -32,7 +32,7 @@ the marketplace instead:
 
 ```bash
 /plugin marketplace add /absolute/path/to/magi/integrations/magi-agent-plugin
-/plugin install magi-agent@magi
+/plugin install magi@magi
 # restart Claude Code
 ```
 

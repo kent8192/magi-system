@@ -44,7 +44,7 @@ confirm() {
 
 # --- Remove the magi plugins from Claude Code and Codex (best effort) ---
 # These plugins are registered from the repository "magi" marketplace:
-#   - magi-agent in Claude Code
+#   - magi in Claude Code
 #   - magi in Codex
 # Removal runs independently of the managed skill directory below, so orphaned
 # plugin registrations are always cleaned up, and it never aborts the uninstall.
@@ -53,8 +53,12 @@ PLUGINS_REMOVED=false
 
 remove_agent_plugins() {
   if command -v claude >/dev/null 2>&1; then
+    if claude plugin uninstall "magi" --scope user --yes >/dev/null 2>&1; then
+      echo "  - removed magi plugin from Claude Code"
+      PLUGINS_REMOVED=true
+    fi
     if claude plugin uninstall "magi-agent" --scope user --yes >/dev/null 2>&1; then
-      echo "  - removed magi-agent plugin from Claude Code"
+      echo "  - removed legacy magi-agent plugin from Claude Code"
       PLUGINS_REMOVED=true
     fi
     claude plugin marketplace remove "$MAGI_PLUGIN_MARKETPLACE" >/dev/null 2>&1 || true

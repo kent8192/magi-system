@@ -5,7 +5,7 @@
   },
   "plugins": [
     {
-      "name": "magi-agent",
+      "name": "magi",
       "source": "./",
       "description": "Event-driven bridge: incoming magi messages become new input for a persistent Claude session, which auto-replies via the magi CLI."
     }
