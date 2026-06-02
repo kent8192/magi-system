@@ -110,6 +110,20 @@ If no session record or hook current pointer exists, there is no agent-name
 fallback; commands that need an agent fail instead of reusing another session's
 name. The team can still fall back to `identity.active_team`.
 
+Operators can manage explicit project/type registrations with
+`magi registration add/remove/reset`. Registrations keep the existing
+`type:project` set value for compatibility, while optional session ownership is
+stored in an adjacent Redis hash. `magi identity list` and
+`magi identity whoami` inspect those registrations to report exact matches,
+multiple matches, same-type suggestions in other projects, or a not-joined
+state without restoring persistent active-agent config.
+
+`magi actas claim` writes a TTL-backed Redis claim for a `(team, agent,
+session)` pair. Inbox consumers (`inbox`, `watch`, and the Codex bridge) check
+that claim before advancing a cursor. If another live session owns the claim,
+the consumer fails before reading messages. `actas gc` is intentionally a
+health command because stale claims expire via Redis TTL.
+
 The Codex plugin also injects a compact UserPromptSubmit context block before
 each prompt with the resolved session id, active magi agent, active team, Redis
 state, and session record status. If Codex was updated after a session started
@@ -166,6 +180,15 @@ delivery succeeds.
 Delivery failures are retried without acknowledging the failed message: when a
 batch partially succeeds, the cursor advances only through the successfully
 submitted messages.
+
+`magi delivery set/status/restart/stop` stores delivery mode metadata for a
+`(type, project)` pair in Redis. These commands are the explicit operator path
+for delivery-mode state; runtime hooks do not infer or mutate user config
+silently outside that path.
+
+Agent and team rename commands move roster, profile, registration, cursor, and
+team metadata keys. Stream history remains immutable, so historical messages
+keep the names that were recorded when they were sent.
 
 ## Plugin Parity (Codex vs Claude Code)
 

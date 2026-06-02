@@ -29,6 +29,9 @@
 /// spawn (register) and despawn (remove) for short-lived session agents.
 pub mod agent;
 
+/// Actas-style exclusive role claims for session ownership.
+pub mod actas;
+
 /// CLI command definitions and top-level dispatch logic.
 pub mod cli;
 
@@ -38,6 +41,9 @@ pub mod codex_bridge;
 /// Runtime configuration sourced from environment variables and the
 /// `~/.magi` state directory.
 pub mod config;
+
+/// Delivery mode configuration for runtime integrations.
+pub mod delivery;
 
 /// Unified error and result types shared across all crate modules.
 pub mod error;
@@ -49,6 +55,9 @@ pub mod install;
 /// Invite-code based onboarding: generate single-use codes and redeem them
 /// to admit a new agent into a team.
 pub mod invite;
+
+/// Project/type identity discovery.
+pub mod identity;
 
 /// Core messaging subsystem built on Redis Streams (durable, ordered
 /// delivery) and Pub/Sub (low-latency broadcast).
@@ -69,6 +78,9 @@ pub mod redis_client;
 /// High-level Redis manager that owns the connection pool and
 /// coordinates Stream consumption with Pub/Sub multiplexing.
 pub mod redis_manager;
+
+/// Direct project/type registration management.
+pub mod registration;
 
 /// Interactive REPL for composing outgoing messages and displaying
 /// incoming ones at an interactive terminal session.

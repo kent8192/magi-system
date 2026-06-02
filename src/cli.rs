@@ -17,7 +17,7 @@
 //!   join    --invite <TOKEN>
 //!   send    <TO> <MESSAGE>...
 //!   inbox
-//!   history [--team <T>] [--agent <A>]
+//!   history [--team <T>] [--agent <A>] [--limit <N>]
 //!   watch   [--format line|json|context] [--once]
 //!   codex   {bridge}
 //!   ssh     {start|status|stop}
@@ -29,6 +29,7 @@
 //! (handled by the caller when `Cli::command` is `None`).
 
 use clap::{Parser, Subcommand, ValueEnum};
+use std::path::PathBuf;
 
 /// Root CLI struct parsed from `argv` by `clap`.
 ///
@@ -91,6 +92,30 @@ pub enum Command {
         command: AgentCommand,
     },
 
+    /// Manage explicit project/type registrations.
+    Registration {
+        #[command(subcommand)]
+        command: RegistrationCommand,
+    },
+
+    /// Discover project/type identities without persistent active-agent state.
+    Identity {
+        #[command(subcommand)]
+        command: IdentityCommand,
+    },
+
+    /// Manage actas-style exclusive role claims.
+    Actas {
+        #[command(subcommand)]
+        command: ActasCommand,
+    },
+
+    /// Manage delivery mode configuration for runtime integrations.
+    Delivery {
+        #[command(subcommand)]
+        command: DeliveryCommand,
+    },
+
     /// Send a message to another agent or team via Redis Streams.
     ///
     /// `to` identifies the recipient (agent name or team name).  All
@@ -104,8 +129,21 @@ pub enum Command {
         message: Vec<String>,
     },
 
-    /// Display unread messages in the current agent's inbox.
-    Inbox,
+    /// Display unread messages in an inbox.
+    Inbox {
+        /// Team to read from; defaults to the active team.
+        #[arg(long)]
+        team: Option<String>,
+        /// Agent to read for; defaults to the current session agent.
+        #[arg(long)]
+        agent: Option<String>,
+        /// Suppress no-message output for hook use.
+        #[arg(long)]
+        quiet: bool,
+        /// Hook-oriented output format.
+        #[arg(long, value_enum)]
+        hook_format: Option<HookFormat>,
+    },
 
     /// Display message history, optionally filtered by team or agent.
     ///
@@ -117,6 +155,9 @@ pub enum Command {
         /// Restrict output to messages sent by or to this agent.
         #[arg(long)]
         agent: Option<String>,
+        /// Maximum number of messages to print.
+        #[arg(long)]
+        limit: Option<usize>,
     },
 
     /// Subscribe to the Redis Pub/Sub channel and stream incoming messages.
@@ -217,6 +258,13 @@ pub enum TeamCommand {
         #[arg(long)]
         team: Option<String>,
     },
+    /// Rename a team.
+    Rename {
+        /// Current team name.
+        old: String,
+        /// New team name.
+        new: String,
+    },
 }
 
 /// Subcommands for ephemeral session-scoped agent management.
@@ -250,6 +298,136 @@ pub enum AgentCommand {
         /// Agent name to remove; defaults to the current session agent.
         #[arg(long)]
         name: Option<String>,
+    },
+    /// Rename an agent within a team.
+    Rename {
+        /// Team containing the agent.
+        #[arg(long)]
+        team: String,
+        /// Current agent name.
+        old: String,
+        /// New agent name.
+        new: String,
+    },
+}
+
+/// Subcommands for direct registration management.
+#[derive(Debug, Subcommand)]
+pub enum RegistrationCommand {
+    /// Add or refresh a project/type registration.
+    Add {
+        #[arg(long)]
+        team: String,
+        #[arg(long)]
+        agent: String,
+        #[arg(long = "type")]
+        agent_type: String,
+        #[arg(long)]
+        project: PathBuf,
+        #[arg(long)]
+        session: Option<String>,
+    },
+    /// Remove an agent and all of its registrations.
+    Remove {
+        #[arg(long)]
+        team: String,
+        #[arg(long)]
+        agent: String,
+    },
+    /// Remove registrations matching project/type filters.
+    Reset {
+        #[arg(long)]
+        project: PathBuf,
+        #[arg(long = "type")]
+        agent_type: String,
+        #[arg(long)]
+        agent: Option<String>,
+        #[arg(long)]
+        session: Option<String>,
+    },
+}
+
+/// Subcommands for project/type identity discovery.
+#[derive(Debug, Subcommand)]
+pub enum IdentityCommand {
+    /// List identities registered for the project/type pair.
+    List {
+        #[arg(long)]
+        project: PathBuf,
+        #[arg(long = "type")]
+        agent_type: String,
+    },
+    /// Resolve the current identity for a project/type pair.
+    Whoami {
+        #[arg(long)]
+        project: PathBuf,
+        #[arg(long = "type")]
+        agent_type: String,
+    },
+}
+
+/// Subcommands for actas-style exclusive role claims.
+#[derive(Debug, Subcommand)]
+pub enum ActasCommand {
+    /// Claim exclusive use of an agent role for a session.
+    Claim {
+        agent: String,
+        #[arg(long)]
+        team: Option<String>,
+        #[arg(long)]
+        session: Option<String>,
+        #[arg(long, default_value_t = 3600)]
+        ttl: u64,
+    },
+    /// Release an exclusive role claim.
+    Release {
+        agent: String,
+        #[arg(long)]
+        team: Option<String>,
+        #[arg(long)]
+        session: Option<String>,
+    },
+    /// Print current claim status for a role.
+    Status {
+        agent: String,
+        #[arg(long)]
+        team: Option<String>,
+    },
+    /// Garbage-collect stale claims.
+    Gc,
+}
+
+/// Subcommands for runtime delivery mode configuration.
+#[derive(Debug, Subcommand)]
+pub enum DeliveryCommand {
+    /// Set delivery mode for a project/type pair.
+    Set {
+        mode: DeliveryMode,
+        #[arg(long = "type")]
+        agent_type: String,
+        #[arg(long)]
+        project: PathBuf,
+    },
+    /// Show delivery mode for a project/type pair.
+    Status {
+        #[arg(long = "type")]
+        agent_type: Option<String>,
+        #[arg(long)]
+        project: Option<PathBuf>,
+    },
+    /// Refresh delivery configuration for a project/type pair.
+    Restart {
+        #[arg(long = "type")]
+        agent_type: String,
+        #[arg(long)]
+        project: PathBuf,
+    },
+    /// Disable delivery for a project/type pair.
+    Stop {
+        #[arg(long = "type")]
+        agent_type: String,
+        #[arg(long)]
+        project: PathBuf,
     },
 }
 
@@ -288,6 +466,30 @@ pub enum ConfigCommand {
     Get { key: String },
     /// Write a configuration value.
     Set { key: String, value: String },
+    /// Print the full configuration document.
+    Show,
+}
+
+/// Hook-oriented inbox output format.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum HookFormat {
+    /// JSON payload suitable for Codex hooks.
+    Codex,
+    /// JSON payload suitable for Claude Code hooks.
+    ClaudeCode,
+}
+
+/// Delivery mode values.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum DeliveryMode {
+    /// Monitor-based live delivery.
+    Monitor,
+    /// Turn-based delivery.
+    Turn,
+    /// Both monitor and turn delivery.
+    Both,
+    /// Delivery disabled.
+    Off,
 }
 
 /// Subcommands for Codex runtime integrations.

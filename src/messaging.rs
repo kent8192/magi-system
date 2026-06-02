@@ -32,7 +32,9 @@
 //! human-readable output for the CLI subcommands of the same name.
 
 use redis::AsyncCommands;
+use serde_json::json;
 
+use crate::cli::HookFormat;
 use crate::config::AppConfig;
 use crate::error::{MagiError, Result};
 use crate::model::{MessageEvent, RedisKeys};
@@ -109,17 +111,28 @@ pub async fn send(to: String, message: Vec<String>) -> Result<()> {
 ///
 /// Returns an error if the config or active identity cannot be resolved,
 /// or if the underlying Redis read fails (see `read_inbox_with_url`).
-pub async fn inbox() -> Result<()> {
+pub async fn inbox(
+    team: Option<String>,
+    agent: Option<String>,
+    quiet: bool,
+    hook_format: Option<HookFormat>,
+) -> Result<()> {
     let config = AppConfig::load()?;
     let url = configured_redis_url(&config)?;
     let identity = resolve_identity(&config);
-    let team = active_team(&identity)?;
-    let agent = session_agent(&identity)?;
+    let team = team.unwrap_or(active_team(&identity)?);
+    let agent = agent.unwrap_or(session_agent(&identity)?);
 
+    crate::actas::ensure_unblocked_for_session(&url, &team, &agent).await?;
     // MarkRead advances this agent's cursor, so consumed messages are not
     // shown again on the next `inbox` invocation.
-    for message in read_inbox_with_url(&url, &team, &agent, InboxReadMode::MarkRead).await? {
-        println!("{}", format_message_line(&message));
+    let messages = read_inbox_with_url(&url, &team, &agent, InboxReadMode::MarkRead).await?;
+    if let Some(format) = hook_format {
+        print_hook_messages(format, &messages)?;
+    } else if !messages.is_empty() || !quiet {
+        for message in &messages {
+            println!("{}", format_message_line(message));
+        }
     }
     Ok(())
 }
@@ -137,7 +150,11 @@ pub async fn inbox() -> Result<()> {
 /// Returns an error if the config cannot be loaded, if no team can be
 /// resolved (neither argument nor active team set), or if the Redis scan
 /// fails (see `history_with_url`).
-pub async fn history(team: Option<String>, agent: Option<String>) -> Result<()> {
+pub async fn history(
+    team: Option<String>,
+    agent: Option<String>,
+    limit: Option<usize>,
+) -> Result<()> {
     let config = AppConfig::load()?;
     let url = configured_redis_url(&config)?;
     let identity = resolve_identity(&config);
@@ -146,7 +163,7 @@ pub async fn history(team: Option<String>, agent: Option<String>) -> Result<()> 
         .or(identity.team)
         .ok_or_else(|| MagiError::InvalidConfig("identity.active_team is required".to_string()))?;
 
-    for message in history_with_url(&url, &team, agent.as_deref()).await? {
+    for message in history_with_url(&url, &team, agent.as_deref(), limit).await? {
         println!("{}", format_message_line(&message));
     }
     Ok(())
@@ -324,6 +341,7 @@ pub async fn history_with_url(
     url: &str,
     team: &str,
     agent: Option<&str>,
+    limit: Option<usize>,
 ) -> Result<Vec<MessageRecord>> {
     let keys = RedisKeys::new(team);
     let mut connection = redis_client::connect(url).await?;
@@ -333,6 +351,11 @@ pub async fn history_with_url(
     // Optional client-side filter: keep only messages involving the agent.
     if let Some(agent) = agent {
         messages.retain(|message| message.event.from == agent || message.event.to == agent);
+    }
+    if let Some(limit) = limit {
+        if messages.len() > limit {
+            messages = messages.split_off(messages.len() - limit);
+        }
     }
 
     Ok(messages)
@@ -347,6 +370,27 @@ pub fn format_message_line(message: &MessageRecord) -> String {
         "[{}] {} -> {}: {}",
         message.event.created_at, message.event.from, message.event.to, message.event.body
     )
+}
+
+fn print_hook_messages(format: HookFormat, messages: &[MessageRecord]) -> Result<()> {
+    let messages = messages
+        .iter()
+        .map(|message| {
+            json!({
+                "id": message.id,
+                "from": message.event.from,
+                "to": message.event.to,
+                "body": message.event.body,
+                "created_at": message.event.created_at,
+            })
+        })
+        .collect::<Vec<_>>();
+    let runtime = match format {
+        HookFormat::Codex => "codex",
+        HookFormat::ClaudeCode => "claude-code",
+    };
+    println!("{}", json!({ "runtime": runtime, "messages": messages }));
+    Ok(())
 }
 
 /// Verify that `agent` is a registered member of the team's agent set.

@@ -18,8 +18,12 @@ Common actions:
 
 ```bash
 ~/.agents/skills/__SKILL_NAME__/bin/magi send <agent> <message>
-~/.agents/skills/__SKILL_NAME__/bin/magi history
+~/.agents/skills/__SKILL_NAME__/bin/magi inbox [--team <team>] [--agent <agent>] [--quiet]
+~/.agents/skills/__SKILL_NAME__/bin/magi history [--limit <n>]
 ~/.agents/skills/__SKILL_NAME__/bin/magi team members
+~/.agents/skills/__SKILL_NAME__/bin/magi identity whoami --project <path> --type <type>
+~/.agents/skills/__SKILL_NAME__/bin/magi actas claim <agent> [--team <team>] [--session <id>]
+~/.agents/skills/__SKILL_NAME__/bin/magi delivery status --type <type> --project <path>
 ~/.agents/skills/__SKILL_NAME__/bin/magi redis reset
 ~/.agents/skills/__SKILL_NAME__/bin/magi agent spawn
 ~/.agents/skills/__SKILL_NAME__/bin/magi agent despawn

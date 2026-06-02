@@ -189,6 +189,7 @@ magi redis start|status|stop|reset
 magi team create <team>
 magi team list
 magi team members [--team <team>]
+magi team rename <old-team> <new-team>
 magi invite create --team <team> [--ttl 24h]
 magi invite list --team <team>
 magi invite revoke <invite_id>
@@ -196,14 +197,26 @@ magi join --invite <token>
 magi agent name
 magi agent spawn [--team <team>] [--type <type>]
 magi agent despawn [--team <team>] [--name <agent>]
+magi agent rename --team <team> <old-name> <new-name>
+magi registration add --team <team> --agent <agent> --type <type> --project <path> [--session <id>]
+magi registration remove --team <team> --agent <agent>
+magi registration reset --project <path> --type <type> [--agent <agent>] [--session <id>]
+magi identity list --project <path> --type <type>
+magi identity whoami --project <path> --type <type>
+magi actas claim|release|status <agent> [--team <team>] [--session <id>]
+magi actas gc
+magi delivery set <monitor|turn|both|off> --type <type> --project <path>
+magi delivery status --type <type> --project <path>
+magi delivery restart|stop --type <type> --project <path>
 magi send <agent> <message>
-magi inbox
-magi history [--team <team>] [--agent <agent>]
+magi inbox [--team <team>] [--agent <agent>] [--quiet] [--hook-format codex|claude-code]
+magi history [--team <team>] [--agent <agent>] [--limit <n>]
 magi watch [--format line|json|context] [--once]
 magi codex bridge [--thread <thread-id>] [--cwd <dir>] [--codex <codex-cli>] [--socket <sock>]
 magi ssh start|status|stop
 magi config get <key>
 magi config set <key> <value>
+magi config show
 ```
 
 Inside a runtime session, `send`, `inbox`, `history`, `watch`, and `agent name`
@@ -213,6 +226,20 @@ recover the hook-derived agent name even when the Codex session id is not passed
 through the subprocess environment. Persistent config never stores an active
 agent, so concurrent Codex or Claude Code sessions in the same `$HOME` cannot
 overwrite each other's MAGI agent names.
+
+Direct registration commands manage explicit `(team, agent, type, project)`
+tuples in Redis. `identity list` and `identity whoami` inspect those tuples for
+operator discovery without adding a persistent active-agent fallback.
+
+`actas` commands provide a Redis TTL-backed exclusive role claim for a
+`(team, agent, session)` pair. A different live session cannot consume that
+agent's inbox through `inbox`, `watch`, or `codex bridge` while the role is
+claimed. `agent rename` and `team rename` move roster, registration, and cursor
+state; stream history is left immutable and therefore retains historical names.
+
+`delivery` commands store runtime delivery mode configuration for a
+`(type, project)` pair. They are explicit operator commands and do not silently
+edit user runtime configuration outside that command path.
 
 Session hooks track Redis health for recorded ephemeral agents without blocking
 startup or prompt handling. Three due consecutive failed health checks mark a

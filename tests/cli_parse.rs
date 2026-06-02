@@ -18,7 +18,8 @@
 
 use clap::Parser;
 use magi::cli::{
-    AgentCommand, Cli, CodexCommand, Command, ConfigCommand, InviteCommand, RedisCommand,
+    ActasCommand, AgentCommand, Cli, CodexCommand, Command, ConfigCommand, DeliveryCommand,
+    DeliveryMode, HookFormat, IdentityCommand, InviteCommand, RedisCommand, RegistrationCommand,
     SshCommand, TeamCommand, WatchFormat,
 };
 
@@ -253,31 +254,72 @@ fn rejects_join_without_invite() {
 fn parses_history_filters() {
     let cli = Cli::try_parse_from(["magi", "history", "--team", "core", "--agent", "alice"])
         .expect("parse");
-    let Some(Command::History { team, agent }) = cli.command else {
+    let Some(Command::History { team, agent, limit }) = cli.command else {
         panic!("expected history");
     };
 
     assert_eq!(team.as_deref(), Some("core"));
     assert_eq!(agent.as_deref(), Some("alice"));
+    assert_eq!(limit, None);
 }
 
 #[test]
-fn parses_history_without_filters() {
-    let cli = Cli::try_parse_from(["magi", "history"]).expect("parse");
-    let Some(Command::History { team, agent }) = cli.command else {
+fn parses_history_limit() {
+    let cli = Cli::try_parse_from(["magi", "history", "--limit", "3"]).expect("parse");
+    let Some(Command::History { team, agent, limit }) = cli.command else {
         panic!("expected history");
     };
 
     assert_eq!(team, None);
     assert_eq!(agent, None);
+    assert_eq!(limit, Some(3));
 }
 
 #[test]
-fn parses_inbox() {
+fn parses_inbox_defaults() {
     let cli = Cli::try_parse_from(["magi", "inbox"]).expect("parse");
-    let Some(Command::Inbox) = cli.command else {
+    let Some(Command::Inbox {
+        team,
+        agent,
+        quiet,
+        hook_format,
+    }) = cli.command
+    else {
         panic!("expected inbox");
     };
+    assert_eq!(team, None);
+    assert_eq!(agent, None);
+    assert!(!quiet);
+    assert_eq!(hook_format, None);
+}
+
+#[test]
+fn parses_inbox_explicit_hook_options() {
+    let cli = Cli::try_parse_from([
+        "magi",
+        "inbox",
+        "--team",
+        "core",
+        "--agent",
+        "alice",
+        "--quiet",
+        "--hook-format",
+        "codex",
+    ])
+    .expect("parse");
+    let Some(Command::Inbox {
+        team,
+        agent,
+        quiet,
+        hook_format,
+    }) = cli.command
+    else {
+        panic!("expected inbox");
+    };
+    assert_eq!(team.as_deref(), Some("core"));
+    assert_eq!(agent.as_deref(), Some("alice"));
+    assert!(quiet);
+    assert_eq!(hook_format, Some(HookFormat::Codex));
 }
 
 #[test]
@@ -409,6 +451,17 @@ fn parses_config_set() {
 }
 
 #[test]
+fn parses_config_show() {
+    let cli = Cli::try_parse_from(["magi", "config", "show"]).expect("parse");
+    let Some(Command::Config {
+        command: ConfigCommand::Show,
+    }) = cli.command
+    else {
+        panic!("expected config show");
+    };
+}
+
+#[test]
 fn parses_install_command() {
     let cli = Cli::try_parse_from(["magi", "install"]).expect("parse");
     let Some(Command::Install) = cli.command else {
@@ -514,4 +567,232 @@ fn parses_agent_despawn_with_team_and_name() {
     };
     assert_eq!(team.as_deref(), Some("core"));
     assert_eq!(name.as_deref(), Some("quiet-melchior"));
+}
+
+#[test]
+fn parses_agent_rename() {
+    let cli = Cli::try_parse_from(["magi", "agent", "rename", "--team", "core", "old", "new"])
+        .expect("parse");
+    let Some(Command::Agent {
+        command: AgentCommand::Rename { team, old, new },
+    }) = cli.command
+    else {
+        panic!("expected agent rename");
+    };
+    assert_eq!(team, "core");
+    assert_eq!(old, "old");
+    assert_eq!(new, "new");
+}
+
+#[test]
+fn parses_team_rename() {
+    let cli = Cli::try_parse_from(["magi", "team", "rename", "old", "new"]).expect("parse");
+    let Some(Command::Team {
+        command: TeamCommand::Rename { old, new },
+    }) = cli.command
+    else {
+        panic!("expected team rename");
+    };
+    assert_eq!(old, "old");
+    assert_eq!(new, "new");
+}
+
+#[test]
+fn parses_registration_add() {
+    let cli = Cli::try_parse_from([
+        "magi",
+        "registration",
+        "add",
+        "--team",
+        "core",
+        "--agent",
+        "alice",
+        "--type",
+        "codex",
+        "--project",
+        "/tmp/project",
+        "--session",
+        "s1",
+    ])
+    .expect("parse");
+    let Some(Command::Registration {
+        command:
+            RegistrationCommand::Add {
+                team,
+                agent,
+                agent_type,
+                project,
+                session,
+            },
+    }) = cli.command
+    else {
+        panic!("expected registration add");
+    };
+    assert_eq!(team, "core");
+    assert_eq!(agent, "alice");
+    assert_eq!(agent_type, "codex");
+    assert_eq!(project.as_path(), std::path::Path::new("/tmp/project"));
+    assert_eq!(session.as_deref(), Some("s1"));
+}
+
+#[test]
+fn parses_registration_remove_and_reset() {
+    let remove = Cli::try_parse_from([
+        "magi",
+        "registration",
+        "remove",
+        "--team",
+        "core",
+        "--agent",
+        "alice",
+    ])
+    .expect("parse");
+    assert!(matches!(
+        remove.command,
+        Some(Command::Registration {
+            command: RegistrationCommand::Remove { .. }
+        })
+    ));
+
+    let reset = Cli::try_parse_from([
+        "magi",
+        "registration",
+        "reset",
+        "--project",
+        "/tmp/project",
+        "--type",
+        "codex",
+        "--agent",
+        "alice",
+    ])
+    .expect("parse");
+    assert!(matches!(
+        reset.command,
+        Some(Command::Registration {
+            command: RegistrationCommand::Reset { .. }
+        })
+    ));
+}
+
+#[test]
+fn parses_identity_commands() {
+    let list = Cli::try_parse_from([
+        "magi",
+        "identity",
+        "list",
+        "--project",
+        "/tmp/project",
+        "--type",
+        "codex",
+    ])
+    .expect("parse");
+    assert!(matches!(
+        list.command,
+        Some(Command::Identity {
+            command: IdentityCommand::List { .. }
+        })
+    ));
+
+    let whoami = Cli::try_parse_from([
+        "magi",
+        "identity",
+        "whoami",
+        "--project",
+        "/tmp/project",
+        "--type",
+        "codex",
+    ])
+    .expect("parse");
+    assert!(matches!(
+        whoami.command,
+        Some(Command::Identity {
+            command: IdentityCommand::Whoami { .. }
+        })
+    ));
+}
+
+#[test]
+fn parses_actas_commands() {
+    let claim = Cli::try_parse_from([
+        "magi",
+        "actas",
+        "claim",
+        "alice",
+        "--team",
+        "core",
+        "--session",
+        "s1",
+        "--ttl",
+        "30",
+    ])
+    .expect("parse");
+    assert!(matches!(
+        claim.command,
+        Some(Command::Actas {
+            command: ActasCommand::Claim { .. }
+        })
+    ));
+
+    let release = Cli::try_parse_from(["magi", "actas", "release", "alice", "--session", "s1"])
+        .expect("parse");
+    assert!(matches!(
+        release.command,
+        Some(Command::Actas {
+            command: ActasCommand::Release { .. }
+        })
+    ));
+
+    let status = Cli::try_parse_from(["magi", "actas", "status", "alice"]).expect("parse");
+    assert!(matches!(
+        status.command,
+        Some(Command::Actas {
+            command: ActasCommand::Status { .. }
+        })
+    ));
+}
+
+#[test]
+fn parses_delivery_commands() {
+    let set = Cli::try_parse_from([
+        "magi",
+        "delivery",
+        "set",
+        "both",
+        "--type",
+        "codex",
+        "--project",
+        "/tmp/project",
+    ])
+    .expect("parse");
+    let Some(Command::Delivery {
+        command:
+            DeliveryCommand::Set {
+                mode,
+                agent_type,
+                project,
+            },
+    }) = set.command
+    else {
+        panic!("expected delivery set");
+    };
+    assert_eq!(mode, DeliveryMode::Both);
+    assert_eq!(agent_type, "codex");
+    assert_eq!(project.as_path(), std::path::Path::new("/tmp/project"));
+
+    let status = Cli::try_parse_from([
+        "magi",
+        "delivery",
+        "status",
+        "--type",
+        "codex",
+        "--project",
+        "/tmp/project",
+    ])
+    .expect("parse");
+    assert!(matches!(
+        status.command,
+        Some(Command::Delivery {
+            command: DeliveryCommand::Status { .. }
+        })
+    ));
 }
