@@ -45,6 +45,7 @@ Common actions:
 First-time setup:
 
 ```bash
+MAGI_SETUP_TEAM=<team> ~/.agents/skills/__SKILL_NAME__/setup.sh
 ~/.agents/skills/__SKILL_NAME__/bin/magi redis start
 ~/.agents/skills/__SKILL_NAME__/bin/magi team create <team>
 ~/.agents/skills/__SKILL_NAME__/bin/magi invite create --team <team>
@@ -55,10 +56,9 @@ Codex tutorial:
 
 ```text
 # In the first Codex terminal, set up MAGI SYSTEM.
-> $magi:magi Set up MAGI SYSTEM.
+> $magi:setup-magi Set up MAGI SYSTEM.
 
-# Close the first Codex terminal, then open it again in the same project so the
-# first agent wakes up with the MAGI SYSTEM hooks active.
+# The setup-magi skill reads setup.sh and follows that entrypoint.
 
 # Open a second terminal and set up another agent. Codex is recommended.
 > $magi:magi What is your agent name on MAGI SYSTEM?

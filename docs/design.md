@@ -27,6 +27,10 @@
   `https://github.com/kent8192/magi-system.git`) and delegates to that checkout,
   with `MAGI_PLUGIN_REPO` defaulting to the durable `kent8192/magi-system`
   plugin source instead of the temporary clone path.
+- Setup entrypoint: `setup.sh` uses only the `magi` CLI to start managed Redis,
+  create the selected setup team when needed, and set
+  `identity.active_team`. Codex exposes a `setup-magi` skill whose instructions
+  read and then run this entrypoint for MAGI SYSTEM setup prompts.
 - Redis lifecycle: Docker first, `redis-server` fallback
 - Durable messaging: Redis Streams
 - Wakeups: Redis Pub/Sub
@@ -130,6 +134,9 @@ each prompt with the resolved session id, active magi agent, active team, Redis
 state, and session record status. If Codex was updated after a session started
 and SessionStart did not create a record, UserPromptSubmit performs the same
 spawn-and-record step before injecting context.
+Setup prompts are handled by the `setup-magi` skill, which reads `setup.sh` and
+uses that script as the setup entrypoint instead of relying on prompt-string
+matching inside hooks.
 
 The Claude Code plugin uses the runtime's Monitor primitive to keep at least
 one foreground inbox waiter available for each session. SessionStart,

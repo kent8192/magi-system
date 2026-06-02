@@ -63,11 +63,12 @@ magi watch --once --format context      # wait for one delivery, then exit
 In the first Codex terminal, set up MAGI SYSTEM:
 
 ```text
-> $magi:magi Set up MAGI SYSTEM.
+> $magi:setup-magi Set up MAGI SYSTEM.
 ```
 
-Close the first Codex terminal, then open it again in the same project so the
-first agent wakes up with the MAGI SYSTEM hooks active.
+The `setup-magi` skill reads the repository `setup.sh` entrypoint and follows
+it to set up MAGI SYSTEM. Prompt hooks only inject the updated magi-system
+context; they do not inspect prompts to run setup.
 
 Open a second terminal and set up another agent. Codex is recommended:
 
