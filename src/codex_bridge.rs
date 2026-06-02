@@ -139,6 +139,7 @@ async fn deliver_pending(
     status_path: Option<&Path>,
 ) -> Result<DeliveryOutcome> {
     ensure_codex_app_server_socket(delivery.socket)?;
+    crate::actas::ensure_unblocked_for_session(delivery.url, delivery.team, delivery.agent).await?;
     let messages = messaging::read_inbox_with_url(
         delivery.url,
         delivery.team,

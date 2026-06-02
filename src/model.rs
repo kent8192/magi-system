@@ -39,6 +39,9 @@ pub const REDIS_KEY_PREFIX: &str = "magi";
 /// magi:team:<team_id>:agents         — set of agent IDs in the team
 /// magi:agent:<team_id>:<agent_id>    — hash of agent metadata
 /// magi:agent:<team_id>:<agent_id>:registrations — registration counter / set
+/// magi:agent:<team_id>:<agent_id>:registration_sessions — session metadata for registrations
+/// magi:actas:<team_id>:<agent_id>    — exclusive actas role claim
+/// magi:delivery:<agent_type>:<project_hash> — delivery mode configuration
 /// magi:stream:<team_id>              — Redis Stream carrying team messages
 /// magi:cursor:<team_id>:<agent_id>   — last-read stream entry ID for an agent
 /// magi:pubsub:<team_id>              — Pub/Sub channel for real-time delivery
@@ -109,6 +112,25 @@ impl RedisKeys {
         format!("{}:registrations", self.agent(agent_id))
     }
 
+    /// Returns the hash key that maps registration tuples to session ids.
+    ///
+    /// The tuple value remains `type:project` for backwards compatibility with
+    /// existing registration sets; the optional session id lives in this
+    /// adjacent hash so session-scoped removal can be implemented without
+    /// changing the registration set wire format.
+    pub fn registration_sessions(&self, agent_id: &str) -> String {
+        format!("{}:registration_sessions", self.agent(agent_id))
+    }
+
+    /// Returns the Redis key used for an actas-style exclusive role claim.
+    pub fn actas_lock(&self, agent_id: &str) -> String {
+        format!(
+            "{REDIS_KEY_PREFIX}:actas:{}:{}",
+            self.team_id,
+            encode_key_segment(agent_id)
+        )
+    }
+
     /// Returns the Redis Stream key through which all team messages flow.
     ///
     /// Every `MessageEvent` sent within the team is appended to this stream
@@ -166,6 +188,15 @@ impl RedisKeys {
         format!(
             "{REDIS_KEY_PREFIX}:invite_token:{}",
             encode_key_segment(token_hash)
+        )
+    }
+
+    /// Returns the Redis key used for delivery-mode configuration.
+    pub fn delivery(agent_type: &str, project: &str) -> String {
+        format!(
+            "{REDIS_KEY_PREFIX}:delivery:{}:{}",
+            encode_key_segment(agent_type),
+            encode_key_segment(project)
         )
     }
 }

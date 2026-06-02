@@ -24,6 +24,7 @@
 //! `type:project` registration tuples.
 
 use redis::AsyncCommands;
+use std::collections::HashMap;
 
 use crate::config::AppConfig;
 use crate::error::{MagiError, Result};
@@ -52,6 +53,19 @@ pub struct TeamMember {
     /// Unix-epoch-seconds timestamp (as a string) of the agent's most recent
     /// registration/heartbeat.
     pub last_seen_at: String,
+}
+
+/// A scoped project/type registration for one agent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentRegistration {
+    /// Agent name that owns the registration.
+    pub agent: String,
+    /// Agent runtime type recorded for the registration.
+    pub agent_type: String,
+    /// Project path recorded for the registration.
+    pub project: String,
+    /// Optional runtime session id associated with this registration.
+    pub session: Option<String>,
 }
 
 /// Creates a new team and registers the current agent as its owner.
@@ -140,6 +154,15 @@ pub async fn members(name: Option<String>) -> Result<()> {
     Ok(())
 }
 
+/// CLI entry point for `magi team rename`.
+pub async fn rename(old: String, new: String) -> Result<()> {
+    let config = AppConfig::load()?;
+    let url = configured_redis_url(&config)?;
+    rename_team_with_url(&url, &old, &new).await?;
+    println!("Renamed team {old} -> {new}");
+    Ok(())
+}
+
 /// Creates a team on a specific Redis instance and registers its `owner`.
 ///
 /// This is the connection-explicit core used by `create` and by callers (such
@@ -213,6 +236,240 @@ pub async fn register_agent_with_url(
     register_agent_with_connection(&mut connection, &keys, agent, agent_type, project).await
 }
 
+/// Registers an agent and optionally associates the project/type tuple with a session id.
+pub async fn register_agent_scoped_with_url(
+    url: &str,
+    team: &str,
+    agent: &str,
+    agent_type: &str,
+    project: &str,
+    session: Option<&str>,
+) -> Result<()> {
+    let keys = RedisKeys::new(team);
+    let mut connection = redis_client::connect(url).await?;
+    register_agent_with_connection(&mut connection, &keys, agent, agent_type, project).await?;
+    if let Some(session) = session.filter(|session| !session.is_empty()) {
+        let _: () = connection
+            .hset(
+                keys.registration_sessions(agent),
+                registration_tuple(agent_type, project),
+                session,
+            )
+            .await?;
+    }
+    Ok(())
+}
+
+/// Removes an entire agent from a team, including profile, registrations, and cursor state.
+pub async fn remove_agent_with_url(url: &str, team: &str, agent: &str) -> Result<()> {
+    let keys = RedisKeys::new(team);
+    let mut connection = redis_client::connect(url).await?;
+    remove_agent_with_connection(&mut connection, &keys, team, agent).await
+}
+
+/// Removes registrations matching the supplied filters.
+pub async fn reset_registrations_with_url(
+    url: &str,
+    project: &str,
+    agent_type: &str,
+    agent: Option<&str>,
+    session: Option<&str>,
+) -> Result<usize> {
+    let mut connection = redis_client::connect(url).await?;
+    let global_keys = RedisKeys::new("");
+    let teams: Vec<String> = connection.smembers(global_keys.teams()).await?;
+    let mut removed = 0;
+
+    for team in teams {
+        let keys = RedisKeys::new(&team);
+        let agents = if let Some(agent) = agent {
+            vec![agent.to_string()]
+        } else {
+            let mut agents: Vec<String> = connection.smembers(keys.team_agents()).await?;
+            agents.sort();
+            agents
+        };
+
+        for agent in agents {
+            if remove_registration_with_connection(
+                &mut connection,
+                &keys,
+                &team,
+                &agent,
+                agent_type,
+                project,
+                session,
+            )
+            .await?
+            {
+                removed += 1;
+            }
+        }
+    }
+
+    Ok(removed)
+}
+
+/// Lists registrations matching a project/type pair across all known teams.
+pub async fn list_registrations_with_url(
+    url: &str,
+    project: &str,
+    agent_type: &str,
+) -> Result<Vec<AgentRegistration>> {
+    let mut connection = redis_client::connect(url).await?;
+    let global_keys = RedisKeys::new("");
+    let teams: Vec<String> = connection.smembers(global_keys.teams()).await?;
+    let mut matches = Vec::new();
+
+    for team in teams {
+        let keys = RedisKeys::new(&team);
+        let agents: Vec<String> = connection.smembers(keys.team_agents()).await?;
+        for agent in agents {
+            if let Some(registration) =
+                registration_for_agent(&mut connection, &keys, &agent, agent_type, project).await?
+            {
+                matches.push(registration);
+            }
+        }
+    }
+
+    matches.sort_by(|a, b| a.agent.cmp(&b.agent));
+    Ok(matches)
+}
+
+/// Lists same-type registrations for projects other than the requested one.
+pub async fn suggested_registrations_with_url(
+    url: &str,
+    project: &str,
+    agent_type: &str,
+) -> Result<Vec<AgentRegistration>> {
+    let mut connection = redis_client::connect(url).await?;
+    let global_keys = RedisKeys::new("");
+    let teams: Vec<String> = connection.smembers(global_keys.teams()).await?;
+    let mut matches = Vec::new();
+
+    for team in teams {
+        let keys = RedisKeys::new(&team);
+        let agents: Vec<String> = connection.smembers(keys.team_agents()).await?;
+        for agent in agents {
+            for registration in registrations_for_agent(&mut connection, &keys, &agent).await? {
+                if registration.agent_type == agent_type && registration.project != project {
+                    matches.push(registration);
+                }
+            }
+        }
+    }
+
+    matches.sort_by(|a, b| a.agent.cmp(&b.agent).then(a.project.cmp(&b.project)));
+    Ok(matches)
+}
+
+/// Renames one agent while preserving profile, registrations, and inbox cursor.
+pub async fn rename_agent_with_url(url: &str, team: &str, old: &str, new: &str) -> Result<()> {
+    let keys = RedisKeys::new(team);
+    let mut connection = redis_client::connect(url).await?;
+    let exists: bool = connection.sismember(keys.team_agents(), old).await?;
+    if !exists {
+        return Err(MagiError::NotFound(format!("agent `{old}`")));
+    }
+    let collision: bool = connection.sismember(keys.team_agents(), new).await?;
+    if collision {
+        return Err(MagiError::InvalidConfig(format!(
+            "agent `{new}` already exists"
+        )));
+    }
+
+    rename_existing_key(&mut connection, keys.agent(old), keys.agent(new)).await?;
+    rename_existing_key(
+        &mut connection,
+        keys.registrations(old),
+        keys.registrations(new),
+    )
+    .await?;
+    rename_existing_key(
+        &mut connection,
+        keys.registration_sessions(old),
+        keys.registration_sessions(new),
+    )
+    .await?;
+    rename_existing_key(&mut connection, keys.cursor(old), keys.cursor(new)).await?;
+
+    let _: () = redis::pipe()
+        .atomic()
+        .srem(keys.team_agents(), old)
+        .sadd(keys.team_agents(), new)
+        .hset(keys.agent(new), "name", new)
+        .hset(keys.team(), "updated_at", unix_timestamp_string())
+        .query_async(&mut connection)
+        .await?;
+
+    Ok(())
+}
+
+/// Renames a team and moves all team-scoped keys to the new name.
+pub async fn rename_team_with_url(url: &str, old: &str, new: &str) -> Result<()> {
+    let old_keys = RedisKeys::new(old);
+    let new_keys = RedisKeys::new(new);
+    let mut connection = redis_client::connect(url).await?;
+    let exists: bool = connection.sismember(old_keys.teams(), old).await?;
+    if !exists {
+        return Err(MagiError::NotFound(format!("team `{old}`")));
+    }
+    let collision: bool = connection.sismember(old_keys.teams(), new).await?;
+    if collision {
+        return Err(MagiError::InvalidConfig(format!(
+            "team `{new}` already exists"
+        )));
+    }
+
+    let agents: Vec<String> = connection.smembers(old_keys.team_agents()).await?;
+    for agent in &agents {
+        rename_existing_key(
+            &mut connection,
+            old_keys.agent(agent),
+            new_keys.agent(agent),
+        )
+        .await?;
+        rename_existing_key(
+            &mut connection,
+            old_keys.registrations(agent),
+            new_keys.registrations(agent),
+        )
+        .await?;
+        rename_existing_key(
+            &mut connection,
+            old_keys.registration_sessions(agent),
+            new_keys.registration_sessions(agent),
+        )
+        .await?;
+        rename_existing_key(
+            &mut connection,
+            old_keys.cursor(agent),
+            new_keys.cursor(agent),
+        )
+        .await?;
+    }
+    rename_existing_key(
+        &mut connection,
+        old_keys.team_agents(),
+        new_keys.team_agents(),
+    )
+    .await?;
+    rename_existing_key(&mut connection, old_keys.team(), new_keys.team()).await?;
+    rename_existing_key(&mut connection, old_keys.stream(), new_keys.stream()).await?;
+
+    let _: () = redis::pipe()
+        .atomic()
+        .srem(old_keys.teams(), old)
+        .sadd(old_keys.teams(), new)
+        .hset(new_keys.team(), "name", new)
+        .hset(new_keys.team(), "updated_at", unix_timestamp_string())
+        .query_async(&mut connection)
+        .await?;
+
+    Ok(())
+}
+
 /// Loads the full membership of a team from a specific Redis instance.
 ///
 /// Reads the per-team agent set, then for each agent fetches its profile hash
@@ -247,11 +504,13 @@ pub async fn list_members_with_url(url: &str, team: &str) -> Result<Vec<TeamMemb
         registrations.sort();
         // Each registration tuple is "type:project"; take the project portion
         // of the last (highest-sorted) tuple, defaulting to empty when none.
-        let project = registrations
+        let parsed_project = registrations
             .last()
             .and_then(|registration| registration.split_once(':').map(|(_, project)| project))
             .unwrap_or("")
             .to_string();
+        let project: Option<String> = connection.hget(&agent_key, "project").await?;
+        let project = project.unwrap_or(parsed_project);
 
         members.push(TeamMember {
             name: agent,
@@ -335,6 +594,7 @@ fn add_agent_registration_to_pipe(
     pipe.sadd(keys.team_agents(), agent)
         .hset(&agent_key, "name", agent)
         .hset(&agent_key, "type", agent_type)
+        .hset(&agent_key, "project", project)
         .hset(&agent_key, "created_at", created_at)
         .hset(&agent_key, "last_seen_at", last_seen_at);
 
@@ -343,6 +603,142 @@ fn add_agent_registration_to_pipe(
     if !project.is_empty() {
         pipe.sadd(keys.registrations(agent), format!("{agent_type}:{project}"));
     }
+}
+
+fn registration_tuple(agent_type: &str, project: &str) -> String {
+    format!("{agent_type}:{project}")
+}
+
+async fn registration_for_agent(
+    connection: &mut redis::aio::MultiplexedConnection,
+    keys: &RedisKeys,
+    agent: &str,
+    agent_type: &str,
+    project: &str,
+) -> Result<Option<AgentRegistration>> {
+    let tuple = registration_tuple(agent_type, project);
+    let exists: bool = connection
+        .sismember(keys.registrations(agent), &tuple)
+        .await?;
+    if !exists {
+        return Ok(None);
+    }
+    let session: Option<String> = connection
+        .hget(keys.registration_sessions(agent), &tuple)
+        .await?;
+    Ok(Some(AgentRegistration {
+        agent: agent.to_string(),
+        agent_type: agent_type.to_string(),
+        project: project.to_string(),
+        session,
+    }))
+}
+
+async fn registrations_for_agent(
+    connection: &mut redis::aio::MultiplexedConnection,
+    keys: &RedisKeys,
+    agent: &str,
+) -> Result<Vec<AgentRegistration>> {
+    let mut registrations: Vec<String> = connection.smembers(keys.registrations(agent)).await?;
+    registrations.sort();
+    let sessions: HashMap<String, String> = connection
+        .hgetall(keys.registration_sessions(agent))
+        .await
+        .unwrap_or_default();
+    Ok(registrations
+        .into_iter()
+        .filter_map(|tuple| {
+            let (agent_type, project) = tuple.split_once(':')?;
+            Some(AgentRegistration {
+                agent: agent.to_string(),
+                agent_type: agent_type.to_string(),
+                project: project.to_string(),
+                session: sessions.get(&tuple).cloned(),
+            })
+        })
+        .collect())
+}
+
+async fn remove_registration_with_connection(
+    connection: &mut redis::aio::MultiplexedConnection,
+    keys: &RedisKeys,
+    team: &str,
+    agent: &str,
+    agent_type: &str,
+    project: &str,
+    session: Option<&str>,
+) -> Result<bool> {
+    let tuple = registration_tuple(agent_type, project);
+    let exists: bool = connection
+        .sismember(keys.registrations(agent), &tuple)
+        .await?;
+    if !exists {
+        return Ok(false);
+    }
+    if let Some(expected_session) = session {
+        let actual_session: Option<String> = connection
+            .hget(keys.registration_sessions(agent), &tuple)
+            .await?;
+        if actual_session.as_deref() != Some(expected_session) {
+            return Ok(false);
+        }
+    }
+
+    let _: () = redis::pipe()
+        .atomic()
+        .srem(keys.registrations(agent), &tuple)
+        .hdel(keys.registration_sessions(agent), &tuple)
+        .hset(keys.team(), "updated_at", unix_timestamp_string())
+        .query_async(connection)
+        .await?;
+
+    let remaining: i64 = connection.scard(keys.registrations(agent)).await?;
+    if remaining == 0 {
+        remove_agent_with_connection(connection, keys, team, agent).await?;
+    }
+
+    Ok(true)
+}
+
+async fn remove_agent_with_connection(
+    connection: &mut redis::aio::MultiplexedConnection,
+    keys: &RedisKeys,
+    team: &str,
+    agent: &str,
+) -> Result<()> {
+    let removed: i64 = connection.srem(keys.team_agents(), agent).await?;
+    if removed == 0 {
+        return Err(MagiError::NotFound(format!(
+            "agent `{agent}` is not a member of team `{team}`"
+        )));
+    }
+    let _: () = redis::pipe()
+        .atomic()
+        .del(keys.agent(agent))
+        .del(keys.registrations(agent))
+        .del(keys.registration_sessions(agent))
+        .del(keys.cursor(agent))
+        .del(keys.actas_lock(agent))
+        .hset(keys.team(), "updated_at", unix_timestamp_string())
+        .query_async(connection)
+        .await?;
+    Ok(())
+}
+
+async fn rename_existing_key(
+    connection: &mut redis::aio::MultiplexedConnection,
+    old: String,
+    new: String,
+) -> Result<()> {
+    let exists: bool = connection.exists(&old).await?;
+    if exists {
+        let _: () = redis::cmd("RENAME")
+            .arg(old)
+            .arg(new)
+            .query_async(connection)
+            .await?;
+    }
+    Ok(())
 }
 
 /// Returns the current time as a Unix-epoch-seconds value rendered as a string.

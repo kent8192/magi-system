@@ -207,7 +207,9 @@ pub async fn despawn_with_url(url: &str, team: &str, agent: &str) -> Result<()> 
         .atomic()
         .del(keys.agent(agent))
         .del(keys.registrations(agent))
+        .del(keys.registration_sessions(agent))
         .del(keys.cursor(agent))
+        .del(keys.actas_lock(agent))
         .hset(keys.team(), "updated_at", now)
         .query_async(&mut connection)
         .await?;
@@ -279,5 +281,14 @@ pub async fn despawn(team: Option<String>, name: Option<String>) -> Result<()> {
         Err(MagiError::NotFound(_)) => println!("Agent {name} is not a member of team: {team}"),
         Err(error) => return Err(error),
     }
+    Ok(())
+}
+
+/// CLI entry point for `magi agent rename`.
+pub async fn rename(team: String, old: String, new: String) -> Result<()> {
+    let config = AppConfig::load()?;
+    let url = configured_redis_url(&config)?;
+    team::rename_agent_with_url(&url, &team, &old, &new).await?;
+    println!("Renamed agent {old} -> {new} in team: {team}");
     Ok(())
 }
