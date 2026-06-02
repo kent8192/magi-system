@@ -8,7 +8,7 @@
           {
             "type": "command",
             "command": "\"$PLUGIN_ROOT/hooks/magi-codex-session-start.sh\"",
-            "timeout": "no-timeout",
+            "timeout": 300,
             "statusMessage": "Registering magi Codex agent"
           }
         ]
@@ -21,7 +21,7 @@
           {
             "type": "command",
             "command": "\"$PLUGIN_ROOT/hooks/magi-codex-prompt-context.sh\"",
-            "timeout": "no-timeout",
+            "timeout": 300,
             "statusMessage": "Loading magi context"
           }
         ]
@@ -34,7 +34,7 @@
           {
             "type": "command",
             "command": "\"$PLUGIN_ROOT/hooks/magi-codex-session-end.sh\"",
-            "timeout": "no-timeout",
+            "timeout": 300,
             "statusMessage": "Cleaning up magi Codex agent"
           }
         ]
