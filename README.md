@@ -62,13 +62,12 @@ Codex runtime state needed for immediate Codex injection:
 - host `~/.codex/app-server-control` as container
   `/home/vscode/.codex/app-server-control`
 
-It also sets `MAGI_CODEX_STATE_DIR` and `MAGI_CODEX_APP_SERVER_SOCKET` to the
-container paths above. With those mounts, `magi codex bridge` in the
-devcontainer uses the same Redis credentials, session records, and Codex
-app-server control socket as the host runtime. If the mounts are absent or the
-host Codex app-server daemon is not running, bridge delivery remains safe: the
-bridge reports `unsupported` with the app-server socket path instead of
-advancing the inbox cursor.
+It also sets `MAGI_CODEX_STATE_DIR` to the container state path above. With
+those mounts, `magi codex bridge` in the devcontainer uses the same Redis
+credentials, session records, and Codex app-server control socket as the host
+runtime. If the mounts are absent or the host Codex app-server daemon is not
+running, bridge delivery remains safe: the bridge reports `unsupported` with
+the app-server socket path instead of advancing the inbox cursor.
 
 Override the bootstrap source with `MAGI_BOOTSTRAP_REPO_URL`:
 

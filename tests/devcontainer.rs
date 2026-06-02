@@ -34,10 +34,7 @@ fn devcontainer_exposes_host_magi_codex_runtime_surfaces() {
         remote_env["MAGI_CODEX_STATE_DIR"],
         "/home/vscode/.local/state/magi-codex"
     );
-    assert_eq!(
-        remote_env["MAGI_CODEX_APP_SERVER_SOCKET"],
-        "/home/vscode/.codex/app-server-control/app-server-control.sock"
-    );
+    assert!(!remote_env.contains_key("MAGI_CODEX_APP_SERVER_SOCKET"));
 }
 
 fn assert_mount(mounts: &[Value], expected_prefix: &str) {

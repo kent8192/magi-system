@@ -14,8 +14,7 @@
     "source=${localEnv:HOME}/.codex/app-server-control,target=/home/vscode/.codex/app-server-control,type=bind,consistency=cached"
   ],
   "remoteEnv": {
-    "MAGI_CODEX_STATE_DIR": "/home/vscode/.local/state/magi-codex",
-    "MAGI_CODEX_APP_SERVER_SOCKET": "/home/vscode/.codex/app-server-control/app-server-control.sock"
+    "MAGI_CODEX_STATE_DIR": "/home/vscode/.local/state/magi-codex"
   },
   "customizations": {
     "vscode": {
