@@ -43,6 +43,16 @@ fn codex_marketplace_exposes_magi_plugin() {
         std::fs::read_to_string(marketplace_skill).expect("read marketplace Codex skill")
     );
 
+    let root_setup_skill =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(".codex-plugin/skills/setup-magi/SKILL.md");
+    let marketplace_setup_skill =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/magi/skills/setup-magi/SKILL.md");
+    assert_eq!(
+        std::fs::read_to_string(root_setup_skill).expect("read root setup-magi skill"),
+        std::fs::read_to_string(marketplace_setup_skill)
+            .expect("read marketplace setup-magi skill")
+    );
+
     let marketplace_plugin_manifest_copy =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/magi/.codex-plugin/plugin.json");
     assert_eq!(
@@ -288,18 +298,62 @@ fn setup_sh_entrypoint_sets_up_magi_system() {
 }
 
 #[test]
-fn codex_plugin_prompt_hook_calls_setup_entrypoint() {
+fn codex_plugin_prompt_hook_does_not_call_setup_entrypoint() {
     let hook = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(".codex-plugin/hooks/magi-codex-prompt-context.sh");
     let hook = std::fs::read_to_string(hook).expect("read Codex prompt hook");
 
     assert!(
-        hook.contains("setup_magi_system_requested"),
-        "Codex prompt hook should detect setup MAGI SYSTEM prompts"
+        !hook.contains("setup_magi_system_requested"),
+        "Codex prompt hook should not detect setup MAGI SYSTEM prompts"
     );
     assert!(
-        hook.contains("setup.sh"),
-        "Codex prompt hook should invoke setup.sh for setup MAGI SYSTEM prompts"
+        !hook.contains("setup.sh"),
+        "Codex prompt hook should not invoke setup.sh for setup MAGI SYSTEM prompts"
+    );
+}
+
+#[test]
+fn codex_plugin_packages_setup_magi_skill() {
+    let root_skill =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(".codex-plugin/skills/setup-magi/SKILL.md");
+    let root_plugin_skill =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("skills/setup-magi/SKILL.md");
+    let marketplace_skill =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/magi/skills/setup-magi/SKILL.md");
+    let marketplace_plugin_skill = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("plugins/magi/.codex-plugin/skills/setup-magi/SKILL.md");
+
+    for skill in [
+        &root_skill,
+        &root_plugin_skill,
+        &marketplace_skill,
+        &marketplace_plugin_skill,
+    ] {
+        assert!(
+            skill.exists(),
+            "{} should include the setup-magi skill",
+            skill.display()
+        );
+    }
+
+    let root_skill = std::fs::read_to_string(root_skill).expect("read root setup-magi skill");
+    assert_eq!(
+        root_skill,
+        std::fs::read_to_string(root_plugin_skill).expect("read root plugin setup-magi skill")
+    );
+    assert_eq!(
+        root_skill,
+        std::fs::read_to_string(marketplace_skill).expect("read marketplace setup-magi skill")
+    );
+    assert_eq!(
+        root_skill,
+        std::fs::read_to_string(marketplace_plugin_skill)
+            .expect("read marketplace plugin setup-magi skill")
+    );
+    assert!(
+        root_skill.contains("Read the nearest `setup.sh` before running it"),
+        "setup-magi skill should instruct the LLM to read setup.sh first"
     );
 }
 

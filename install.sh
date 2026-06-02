@@ -173,7 +173,7 @@ Plugins (best effort, from the "$MAGI_PLUGIN_MARKETPLACE" marketplace):
 
 Next:
   1. Run: MAGI_SETUP_TEAM=<team> $SKILL_DIR/setup.sh
-  2. In Codex, you can also prompt: Setup MAGI SYSTEM
+  2. In Codex, you can also prompt: \$magi:setup-magi Set up MAGI SYSTEM
   3. Run: ~/.local/bin/magi invite create --team <team>
 
 MSG

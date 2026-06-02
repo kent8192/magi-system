@@ -212,20 +212,13 @@ teardown() {
   [ "$(sed -n '2p' "$current")" = "testteam" ]
 }
 
-@test "Codex UserPromptSubmit runs setup.sh for setup MAGI SYSTEM prompt" {
+@test "Codex UserPromptSubmit does not run setup.sh for setup MAGI SYSTEM prompt" {
   CODEX_THREAD_ID=thread-setup run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"Setup MAGI SYSTEM"}'
   [ "$status" -eq 0 ]
-  [[ "$output" == *"magi-system setup: ok"* ]]
-  grep -q '^redis-start redis start$' "$CALLS"
-  grep -q '^team-create team create testteam$' "$CALLS"
-  grep -q '^config-set config set identity.active_team testteam$' "$CALLS"
-}
-
-@test "Codex UserPromptSubmit runs setup.sh for set up MAGI SYSTEM prompt" {
-  CODEX_THREAD_ID=thread-set-up run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"Set up MAGI SYSTEM."}'
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"magi-system setup: ok"* ]]
-  grep -q '^redis-start redis start$' "$CALLS"
+  [[ "$output" != *"magi-system setup:"* ]]
+  ! grep -q '^redis-start redis start$' "$CALLS"
+  ! grep -q '^team-create team create testteam$' "$CALLS"
+  ! grep -q '^config-set config set identity.active_team testteam$' "$CALLS"
 }
 
 @test "Codex UserPromptSubmit reports bridge status sidecar" {

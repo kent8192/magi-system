@@ -102,11 +102,11 @@ The repository ships two plugins under the `magi` marketplace:
   `magi` messaging skill plus Codex session hooks that spawn a session-scoped
   `codex` agent, inject magi-system context on each prompt, self-heal a missing
   session record when SessionStart did not fire, and clean the agent up on
-  session end or after repeated Redis health-check failures. The hooks also
-  run `setup.sh` when a prompt asks to set up MAGI SYSTEM; that entrypoint
-  starts managed Redis, creates the active setup team when missing, and stores
-  it through the `magi` CLI before normal prompt context is injected. They also
-  ensure the managed Codex app-server daemon is running, then launch
+  session end or after repeated Redis health-check failures. The package also
+  exposes the `setup-magi` skill for setup prompts; that skill reads `setup.sh`
+  and follows the entrypoint that starts managed Redis, creates the active setup
+  team when missing, and stores it through the `magi` CLI. The hooks also ensure
+  the managed Codex app-server daemon is running, then launch
   `magi codex bridge` for the current Codex thread so Redis Pub/Sub wakeups
   are first injected into Codex thread history over the Unix control socket's
   WebSocket transport, then followed by a best-effort Codex app-server turn.
@@ -154,12 +154,11 @@ the temporary clone. After installing into Claude Code, restart it and run
 In the first Codex terminal, set up MAGI SYSTEM:
 
 ```text
-> $magi:magi Set up MAGI SYSTEM.
+> $magi:setup-magi Set up MAGI SYSTEM.
 ```
 
-The Codex prompt hook treats setup-style MAGI SYSTEM prompts as an instruction
-to run `setup.sh`, then injects the updated magi-system context into the same
-turn.
+The `setup-magi` skill reads `setup.sh` and follows that entrypoint. The next
+prompt receives the updated magi-system context from the Codex prompt hook.
 
 Open a second terminal and set up another agent. Codex is recommended:
 

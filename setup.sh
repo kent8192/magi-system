@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# MAGI SYSTEM setup entrypoint for installed hooks and manual setup prompts.
+# MAGI SYSTEM setup entrypoint for the setup-magi skill and manual setup.
 
 MAGI="${MAGI_BIN:-}"
 [ -n "$MAGI" ] || MAGI="$(command -v magi 2>/dev/null || true)"

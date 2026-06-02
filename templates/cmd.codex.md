@@ -56,9 +56,9 @@ Codex tutorial:
 
 ```text
 # In the first Codex terminal, set up MAGI SYSTEM.
-> $magi:magi Set up MAGI SYSTEM.
+> $magi:setup-magi Set up MAGI SYSTEM.
 
-# The Codex prompt hook runs setup.sh for setup-style MAGI SYSTEM prompts.
+# The setup-magi skill reads setup.sh and follows that entrypoint.
 
 # Open a second terminal and set up another agent. Codex is recommended.
 > $magi:magi What is your agent name on MAGI SYSTEM?

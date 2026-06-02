@@ -34,3 +34,6 @@ MAGI_SETUP_TEAM=<team> ~/.agents/skills/magi/setup.sh
 ~/.agents/skills/magi/bin/magi invite create --team <team>
 ~/.agents/skills/magi/bin/magi join --invite <token>
 ```
+
+In Codex plugin installs, use the `setup-magi` skill for MAGI SYSTEM setup.
+That skill reads `setup.sh` before running it.
