@@ -157,7 +157,7 @@ fn codex_plugin_declares_session_agent_hooks() {
 }
 
 #[test]
-fn codex_plugin_hooks_use_no_timeout_for_monitoring_context() {
+fn codex_plugin_hooks_use_numeric_timeout_for_monitoring_context() {
     for hooks_path in [
         ".codex-plugin/hooks/hooks.json",
         "plugins/magi/hooks/hooks.json",
@@ -171,8 +171,8 @@ fn codex_plugin_hooks_use_no_timeout_for_monitoring_context() {
         for event in ["SessionStart", "UserPromptSubmit", "SessionEnd"] {
             let handler = &hooks["hooks"][event][0]["hooks"][0];
             assert_eq!(
-                handler["timeout"], "no-timeout",
-                "{hooks_path} {event} should not time out monitoring context"
+                handler["timeout"], 300,
+                "{hooks_path} {event} should use a Codex-compatible numeric timeout"
             );
         }
     }
