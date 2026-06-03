@@ -21,6 +21,7 @@ data, or installed skill files directly.**
 ```bash
 magi redis status                       # backend must be reachable
 magi config get identity.active_team    # your active team
+codex app-server daemon version || codex app-server daemon start
 ```
 
 If Redis is down: `magi redis start`. If the team is unset:
@@ -28,6 +29,9 @@ If Redis is down: `magi redis start`. If the team is unset:
 prefer the `magi-system context` injected by Codex hooks for this session's
 current agent name when it reports a non-`unset` `agent:` value. Use
 `magi agent spawn --team <team> --type codex` only for manual lifecycle control.
+For Codex sessions, keep the managed app-server daemon reachable before
+messaging work. If `codex app-server daemon version` fails after `start`, run
+`codex app-server daemon restart` once and re-check `version`.
 
 ## Common operations
 
@@ -40,6 +44,7 @@ magi team list                          # list teams
 magi identity whoami --project <path> --type <type> # resolve project/type identity
 magi actas claim <agent> [--team <t>] [--session <id>] # claim exclusive role use
 magi delivery status --type <type> --project <path> # show delivery mode
+magi delivery set both --type codex --project <path> # explicit Codex default
 magi watch --format line                # stream incoming messages live (Ctrl-C to stop)
 magi watch --once --format context      # wait for one delivery, then exit
 ```
@@ -57,6 +62,10 @@ magi watch --once --format context      # wait for one delivery, then exit
   session state. The hook-injected `magi-system context` is the preferred source
   for this session's agent name when `agent:` is not `unset`; the CLI has no
   persistent active-agent fallback.
+- Codex hooks store `magi delivery set both --type codex --project <cwd>` when
+  Redis is reachable, so normal Codex sessions have an explicit default delivery
+  mode instead of an empty `off` status. Override it with `magi delivery set ...`
+  or disable it with `magi delivery stop ...`.
 
 ## Codex tutorial
 
@@ -114,16 +123,22 @@ magi config set identity.active_team <team>   # join does not set the active tea
   Redis health-check failures mark the recorded agent for cleanup with a 1s,
   2s, then 4s nonblocking backoff; the next reachable hook run despawns it and
   clears the stale record. Disable spawning with `MAGI_CODEX_EPHEMERAL=0`.
-- SessionStart ensures the managed Codex app-server daemon is running, then
-  launches `magi codex bridge --thread <session-id>` unless
+- Codex hooks ensure the managed Codex app-server daemon is reachable on
+  SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, and SessionEnd
+  unless `MAGI_CODEX_APP_SERVER_DAEMON=0` opts out. The hook checks
+  `codex app-server daemon version`, starts the daemon when needed, and retries
+  once with `codex app-server daemon restart` if the control socket is still not
+  reachable. SessionStart then launches `magi codex bridge --thread
+  <session-id>` unless
   `MAGI_CODEX_APP_SERVER_BRIDGE=0`. The bridge subscribes to Redis Pub/Sub for
   this session agent, consumes unread inbox messages, and first injects each
   `<sender>-><recipient>: message` line into Codex thread history with
   `thread/inject_items`. After injection succeeds, the bridge best-effort starts
   a Codex turn with `turn/start`; a turn-start failure does not mark the message
-  unread again. Prompt hooks perform the same daemon check before restarting a
-  missing bridge and report the bridge as starting, running, delivering,
-  injecting, injected, turn_started, retrying, unsupported, stopped, or disabled.
+  unread again. Prompt hooks perform the same daemon check even when a bridge
+  process already exists, restart a missing bridge, and report the bridge as
+  starting, running, delivering, injecting, injected, turn_started, retrying,
+  unsupported, stopped, or disabled.
   Set `MAGI_CODEX_CLI` when the desired Codex CLI is not the first `codex` on
   PATH, set
   `MAGI_CODEX_APP_SERVER_SOCKET` when the bridge should use a specific Unix

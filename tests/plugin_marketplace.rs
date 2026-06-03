@@ -109,6 +109,9 @@ fn codex_plugin_declares_session_agent_hooks() {
     .expect("root Codex hooks config should be valid JSON");
     assert!(hooks["hooks"]["SessionStart"].is_array());
     assert!(hooks["hooks"]["UserPromptSubmit"].is_array());
+    assert!(hooks["hooks"]["PreToolUse"].is_array());
+    assert!(hooks["hooks"]["PostToolUse"].is_array());
+    assert!(hooks["hooks"]["Stop"].is_array());
     assert!(hooks["hooks"]["SessionEnd"].is_array());
     assert_eq!(
         std::fs::read_to_string(root_hooks).expect("read root Codex hooks config"),
@@ -128,6 +131,7 @@ fn codex_plugin_declares_session_agent_hooks() {
     );
 
     for hook in [
+        "magi-codex-app-server-ensure.sh",
         "magi-codex-session-start.sh",
         "magi-codex-prompt-context.sh",
         "magi-codex-session-end.sh",
@@ -178,11 +182,32 @@ fn codex_plugin_hooks_use_numeric_timeout_for_monitoring_context() {
             serde_json::from_str(&std::fs::read_to_string(&path).expect("read Codex hooks config"))
                 .expect("Codex hooks config should be valid JSON");
 
-        for event in ["SessionStart", "UserPromptSubmit", "SessionEnd"] {
-            let handler = &hooks["hooks"][event][0]["hooks"][0];
-            assert_eq!(
-                handler["timeout"], 300,
-                "{hooks_path} {event} should use a Codex-compatible numeric timeout"
+        for event in [
+            "SessionStart",
+            "UserPromptSubmit",
+            "PreToolUse",
+            "PostToolUse",
+            "Stop",
+            "SessionEnd",
+        ] {
+            let handlers = hooks["hooks"][event][0]["hooks"]
+                .as_array()
+                .unwrap_or_else(|| panic!("{hooks_path} {event} hooks should be an array"));
+            assert!(
+                !handlers.is_empty(),
+                "{hooks_path} {event} should declare at least one handler"
+            );
+            assert!(
+                handlers
+                    .iter()
+                    .all(|handler| handler["timeout"].is_number()),
+                "{hooks_path} {event} should use Codex-compatible numeric timeouts"
+            );
+            assert!(
+                handlers.iter().any(|handler| handler["command"]
+                    .as_str()
+                    .is_some_and(|command| command.contains("magi-codex-app-server-ensure.sh"))),
+                "{hooks_path} {event} should ensure the Codex app-server daemon"
             );
         }
     }

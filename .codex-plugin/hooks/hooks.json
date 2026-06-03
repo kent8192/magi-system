@@ -7,6 +7,12 @@
         "hooks": [
           {
             "type": "command",
+            "command": "\"$PLUGIN_ROOT/hooks/magi-codex-app-server-ensure.sh\"",
+            "timeout": 30,
+            "statusMessage": "Ensuring Codex app-server"
+          },
+          {
+            "type": "command",
             "command": "\"$PLUGIN_ROOT/hooks/magi-codex-session-start.sh\"",
             "timeout": 300,
             "statusMessage": "Registering magi Codex agent"
@@ -20,9 +26,54 @@
         "hooks": [
           {
             "type": "command",
+            "command": "\"$PLUGIN_ROOT/hooks/magi-codex-app-server-ensure.sh\"",
+            "timeout": 30,
+            "statusMessage": "Ensuring Codex app-server"
+          },
+          {
+            "type": "command",
             "command": "\"$PLUGIN_ROOT/hooks/magi-codex-prompt-context.sh\"",
             "timeout": 300,
             "statusMessage": "Loading magi context"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$PLUGIN_ROOT/hooks/magi-codex-app-server-ensure.sh\"",
+            "timeout": 30,
+            "statusMessage": "Ensuring Codex app-server"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$PLUGIN_ROOT/hooks/magi-codex-app-server-ensure.sh\"",
+            "timeout": 30,
+            "statusMessage": "Ensuring Codex app-server"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$PLUGIN_ROOT/hooks/magi-codex-app-server-ensure.sh\"",
+            "timeout": 30,
+            "statusMessage": "Ensuring Codex app-server"
           }
         ]
       }
@@ -31,6 +82,12 @@
       {
         "matcher": "",
         "hooks": [
+          {
+            "type": "command",
+            "command": "\"$PLUGIN_ROOT/hooks/magi-codex-app-server-ensure.sh\"",
+            "timeout": 30,
+            "statusMessage": "Ensuring Codex app-server"
+          },
           {
             "type": "command",
             "command": "\"$PLUGIN_ROOT/hooks/magi-codex-session-end.sh\"",

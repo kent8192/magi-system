@@ -168,17 +168,22 @@ three consecutive failures the sidecar marks cleanup pending; the next hook
 run that can reach Redis removes the agent through `magi agent despawn` and
 clears the session record.
 
-For live Codex delivery, SessionStart first ensures the managed Codex app-server
-daemon is running, then launches `magi codex bridge --thread <session-id>` as a
-session-scoped background process, and SessionEnd stops it. Prompt hooks perform
-the same daemon check before restarting a missing bridge. The bridge subscribes
-to the team Pub/Sub channel, drains unread inbox messages for the session agent,
-formats each delivery as `<sender>-><recipient>: message`, connects directly to
-the Codex Unix control socket with WebSocket-over-UDS, initializes the
-app-server JSON-RPC session, and sends the message over that WebSocket
-transport. The bridge first persists the message with `thread/inject_items`;
-only after that injection succeeds does it best-effort start a Codex turn with
-`turn/start` so the agent can act immediately.
+For live Codex delivery, hooks keep the managed Codex app-server daemon
+reachable on SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, and
+SessionEnd. They treat `codex app-server daemon version` success as the health
+signal, run `codex app-server daemon start` when the daemon is unreachable, and
+retry once with `codex app-server daemon restart` if start does not repair the
+control socket. SessionStart then launches
+`magi codex bridge --thread <session-id>` as a session-scoped background
+process, and SessionEnd stops it. Prompt hooks perform the same daemon check
+even when a bridge process already exists, then restart a missing bridge. The
+bridge subscribes to the team Pub/Sub channel, drains unread inbox messages for
+the session agent, formats each delivery as `<sender>-><recipient>: message`,
+connects directly to the Codex Unix control socket with WebSocket-over-UDS,
+initializes the app-server JSON-RPC session, and sends the message over that
+WebSocket transport. The bridge first persists the message with
+`thread/inject_items`; only after that injection succeeds does it best-effort
+start a Codex turn with `turn/start` so the agent can act immediately.
 `MAGI_CODEX_APP_SERVER_BRIDGE=0` disables this background bridge,
 `MAGI_CODEX_CLI` overrides the Codex executable, and
 `MAGI_CODEX_APP_SERVER_SOCKET` overrides the Unix control socket path.
@@ -205,9 +210,10 @@ batch partially succeeds, the cursor advances only through the successfully
 injected messages.
 
 `magi delivery set/status/restart/stop` stores delivery mode metadata for a
-`(type, project)` pair in Redis. These commands are the explicit operator path
-for delivery-mode state; runtime hooks do not infer or mutate user config
-silently outside that path.
+`(type, project)` pair in Redis. Codex session hooks default this metadata to
+`both` for the current `(codex, cwd)` pair when Redis is reachable, making the
+default explicit instead of reporting an empty `off` state. Operators can
+override or stop that stored mode through the delivery commands.
 
 Agent and team rename commands move roster, profile, registration, cursor, and
 team metadata keys. Stream history remains immutable, so historical messages
