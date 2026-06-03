@@ -5,6 +5,13 @@ description: Redis-backed cross-agent messaging for Codex and other CLI agents.
 
 Use `~/.agents/skills/magi/bin/magi` for all messaging operations.
 Do not read or edit `~/.magi` directly.
+For Codex sessions, keep the managed app-server daemon reachable before
+messaging work:
+
+```bash
+codex app-server daemon version || codex app-server daemon start
+codex app-server daemon version || codex app-server daemon restart
+```
 
 Recommended default action (non-interactive):
 

@@ -35,6 +35,12 @@ if [ "\$1 \$2 \$3" = "app-server daemon start" ]; then
   printf '{"status":"started"}\n'
   exit 0
 fi
+if [ "\$1 \$2 \$3" = "app-server daemon restart" ]; then
+  echo "codex-daemon-restart \$*" >>"$CALLS"
+  printf 'running\n' >"$CODEX_STATUS_FILE"
+  printf '{"status":"restarted"}\n'
+  exit 0
+fi
 exit 0
 EOF
   chmod +x "$FAKE_CODEX"
@@ -89,6 +95,9 @@ fi
 if [ "\$1" = "codex" ] && [ "\$2" = "bridge" ]; then
   echo "bridge \$*" >>"$CALLS"; exit 0
 fi
+if [ "\$1" = "delivery" ] && [ "\$2" = "set" ]; then
+  echo "delivery-set \$*" >>"$CALLS"; exit 0
+fi
 exit 0
 EOF
   chmod +x "$FAKE_MAGI"
@@ -128,6 +137,12 @@ teardown() {
   grep -q "bridge codex bridge --thread codex-bridge --cwd /tmp/project --codex $FAKE_CODEX" "$CALLS"
   local pid_file="$MAGI_CODEX_STATE_DIR/bridges/codex-bridge.pid"
   [ -f "$pid_file" ]
+}
+
+@test "Codex SessionStart creates explicit default delivery mode for project" {
+  run bash "$HOOKS/magi-codex-session-start.sh" <<<'{"session_id":"codex-delivery","cwd":"/tmp/project","hook_event_name":"SessionStart"}'
+  [ "$status" -eq 0 ]
+  grep -q '^delivery-set delivery set both --type codex --project /tmp/project$' "$CALLS"
 }
 
 @test "Codex SessionStart replaces a stale recorded agent before reporting context" {
@@ -235,6 +250,7 @@ teardown() {
   [ -f "$current" ]
   [ "$(sed -n '1p' "$current")" = "quiet-melchior" ]
   [ "$(sed -n '2p' "$current")" = "testteam" ]
+  grep -q '^delivery-set delivery set both --type codex --project /tmp/project$' "$CALLS"
 }
 
 @test "Codex UserPromptSubmit does not run setup.sh for setup MAGI SYSTEM prompt" {
@@ -313,6 +329,27 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"codex app-server bridge: retrying"* ]]
   [[ "$output" == *"last_error: failed to connect to socket at /tmp/app-server-control.sock"* ]]
+}
+
+@test "Codex UserPromptSubmit checks app-server daemon even when bridge pid is alive" {
+  mkdir -p "$MAGI_CODEX_STATE_DIR/sessions" "$MAGI_CODEX_STATE_DIR/bridges"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_CODEX_STATE_DIR/sessions/thread-retrying.agent"
+  printf 'error\n' >"$CODEX_STATUS_FILE"
+  sleep 30 &
+  local bridge_pid="$!"
+  printf '%s\n' "$bridge_pid" >"$MAGI_CODEX_STATE_DIR/bridges/thread-retrying.pid"
+  cat >"$MAGI_CODEX_STATE_DIR/bridges/thread-retrying.status" <<'EOF'
+state=retrying
+updated_at=100
+last_error=io error: Connection refused (os error 61)
+EOF
+  printf 'pid=%s\n' "$bridge_pid" >>"$MAGI_CODEX_STATE_DIR/bridges/thread-retrying.status"
+
+  CODEX_THREAD_ID=thread-retrying run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
+  kill "$bridge_pid" 2>/dev/null || true
+  [ "$status" -eq 0 ]
+  grep -q '^codex-daemon-start app-server daemon start$' "$CALLS"
+  [[ "$output" == *"codex app-server bridge: retrying"* ]]
 }
 
 @test "Codex UserPromptSubmit reports unsupported bridge status sidecar" {
@@ -440,4 +477,11 @@ EOF
   [ ! -f "$MAGI_CODEX_STATE_DIR/sessions/thread-clean.health" ]
   [ -f "$MAGI_CODEX_STATE_DIR/current/tmpproject.agent" ]
   [ "$(grep -c '^spawn ' "$CALLS")" -eq 1 ]
+}
+
+@test "Codex hooks register app-server ensure for every runtime step" {
+  for event in SessionStart UserPromptSubmit PreToolUse PostToolUse Stop SessionEnd; do
+    grep -q "\"$event\"" "$HOOKS/hooks.json"
+  done
+  [ "$(grep -c 'magi-codex-app-server-ensure.sh' "$HOOKS/hooks.json")" -ge 6 ]
 }

@@ -212,10 +212,15 @@ ensure_codex_daemon() {
   if [ -n "${MAGI_CODEX_CLI_SHELL:-}" ]; then
     [ -x "$codex_cli" ] || return 0
     "$MAGI_CODEX_CLI_SHELL" "$codex_cli" app-server daemon start >/dev/null 2>&1 || true
+    codex_daemon_running && return 0
+    "$MAGI_CODEX_CLI_SHELL" "$codex_cli" app-server daemon restart >/dev/null 2>&1 || true
   else
     command -v "$codex_cli" >/dev/null 2>&1 || return 0
     "$codex_cli" app-server daemon start >/dev/null 2>&1 || true
+    codex_daemon_running && return 0
+    "$codex_cli" app-server daemon restart >/dev/null 2>&1 || true
   fi
+  codex_daemon_running || true
 }
 
 status_field() {
@@ -321,6 +326,9 @@ if [ -n "$agent" ] && [ -n "$team" ] && [ -n "$current_file" ]; then
   mkdir -p "$CURRENT_DIR" 2>/dev/null || true
   printf '%s\n%s\n' "$agent" "$team" >"$current_file" 2>/dev/null || true
 fi
+if [ "$redis_state" = "reachable" ] && [ -n "$PROJECT_CWD" ]; then
+  magi_cmd delivery set both --type codex --project "$PROJECT_CWD" >/dev/null 2>&1 || true
+fi
 
 bridge_state="stopped"
 bridge_error=""
@@ -329,13 +337,13 @@ if bridge_on; then
     bridge_pid_file="$BRIDGES_DIR/$(safe_key "$SESSION_ID").pid"
     bridge_log_file="$BRIDGES_DIR/$(safe_key "$SESSION_ID").log"
     bridge_status_file="$BRIDGES_DIR/$(safe_key "$SESSION_ID").status"
+    ensure_codex_daemon
     if bridge_running "$bridge_pid_file"; then
       bridge_state="$(sanitize "$(status_field "$bridge_status_file" state)")"
       [ -n "$bridge_state" ] || bridge_state="running"
       bridge_error="$(sanitize "$(status_field "$bridge_status_file" last_error)")"
     else
       rm -f "$bridge_pid_file" 2>/dev/null || true
-      ensure_codex_daemon
       start_bridge "$bridge_pid_file" "$bridge_log_file" "$bridge_status_file"
       bridge_state="starting"
     fi

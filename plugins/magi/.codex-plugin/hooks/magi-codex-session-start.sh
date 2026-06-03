@@ -144,6 +144,9 @@ if [ -n "$agent" ] && [ -n "$team" ] && [ -n "$current_file" ]; then
   mkdir -p "$CURRENT_DIR" 2>/dev/null || true
   printf '%s\n%s\n' "$agent" "$team" >"$current_file" 2>/dev/null || true
 fi
+if [ "$redis_state" = "reachable" ] && [ -n "$PROJECT_CWD" ]; then
+  magi_cmd delivery set both --type codex --project "$PROJECT_CWD" >/dev/null 2>&1 || true
+fi
 if [ -n "$session_file" ] && [ "$redis_state" = "reachable" ]; then
   rm -f "${session_file%.agent}.health" 2>/dev/null || true
 fi
@@ -195,10 +198,15 @@ ensure_codex_daemon() {
   if [ -n "${MAGI_CODEX_CLI_SHELL:-}" ]; then
     [ -x "$codex_cli" ] || return 0
     "$MAGI_CODEX_CLI_SHELL" "$codex_cli" app-server daemon start >/dev/null 2>&1 || true
+    codex_daemon_running && return 0
+    "$MAGI_CODEX_CLI_SHELL" "$codex_cli" app-server daemon restart >/dev/null 2>&1 || true
   else
     command -v "$codex_cli" >/dev/null 2>&1 || return 0
     "$codex_cli" app-server daemon start >/dev/null 2>&1 || true
+    codex_daemon_running && return 0
+    "$codex_cli" app-server daemon restart >/dev/null 2>&1 || true
   fi
+  codex_daemon_running || true
 }
 
 status_field() {

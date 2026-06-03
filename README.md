@@ -107,7 +107,11 @@ The repository ships two plugins under the `magi` marketplace:
   exposes the `setup-magi` skill for setup prompts; that skill reads `setup.sh`
   and follows the entrypoint that starts managed Redis, creates the active setup
   team when missing, and stores it through the `magi` CLI. The hooks also ensure
-  the managed Codex app-server daemon is running, then launch
+  the managed Codex app-server daemon is reachable on SessionStart,
+  UserPromptSubmit, PreToolUse, PostToolUse, Stop, and SessionEnd. If
+  `codex app-server daemon version` cannot reach the control socket, hooks run
+  `codex app-server daemon start` and retry once with
+  `codex app-server daemon restart` if needed. SessionStart launches
   `magi codex bridge` for the current Codex thread so Redis Pub/Sub wakeups
   are first injected into Codex thread history over the Unix control socket's
   WebSocket transport, then followed by a best-effort Codex app-server turn.
@@ -258,8 +262,10 @@ claimed. `agent rename` and `team rename` move roster, registration, and cursor
 state; stream history is left immutable and therefore retains historical names.
 
 `delivery` commands store runtime delivery mode configuration for a
-`(type, project)` pair. They are explicit operator commands and do not silently
-edit user runtime configuration outside that command path.
+`(type, project)` pair. Codex session hooks create the default explicit
+`both codex <cwd>` setting when Redis is reachable, so `delivery status` shows a
+real stored mode for normal Codex sessions. Operators can still override that
+mode with `magi delivery set ...` or disable it with `magi delivery stop ...`.
 
 Session hooks track Redis health for recorded ephemeral agents without blocking
 startup or prompt handling. Three consecutive failed health checks mark a

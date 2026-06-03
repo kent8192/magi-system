@@ -8,11 +8,17 @@ Do not read or edit `~/.magi` directly.
 When Codex hook output provides a `magi-system context` line, prefer its
 non-`unset` `agent:` and `team:` values for the current session; do not infer a
 reply target from stale local state when the hook reports `agent: unset`.
-Codex hooks ensure the managed app-server daemon is running before starting or
-restarting the live `magi codex bridge`, unless disabled with
-`MAGI_CODEX_APP_SERVER_DAEMON=0`. The bridge uses the Codex Unix control
-socket's WebSocket transport, injects messages into thread history first, and
-only then best-effort starts a Codex turn.
+Codex hooks ensure the managed app-server daemon is reachable on SessionStart,
+UserPromptSubmit, PreToolUse, PostToolUse, Stop, and SessionEnd unless disabled
+with `MAGI_CODEX_APP_SERVER_DAEMON=0`. The check runs
+`codex app-server daemon version`, starts the daemon when needed, and retries
+once with `codex app-server daemon restart` if the control socket is still not
+reachable. The bridge uses the Codex Unix control socket's WebSocket transport,
+injects messages into thread history first, and only then best-effort starts a
+Codex turn.
+When Redis is reachable, Codex hooks also store
+`magi delivery set both --type codex --project <cwd>` so the default delivery
+mode is explicit. Operators can override or stop it with `magi delivery`.
 
 Recommended default action (non-interactive):
 
@@ -33,6 +39,7 @@ Common actions:
 ~/.agents/skills/__SKILL_NAME__/bin/magi identity whoami --project <path> --type <type>
 ~/.agents/skills/__SKILL_NAME__/bin/magi actas claim <agent> [--team <team>] [--session <id>]
 ~/.agents/skills/__SKILL_NAME__/bin/magi delivery status --type <type> --project <path>
+~/.agents/skills/__SKILL_NAME__/bin/magi delivery set both --type codex --project <path>
 ~/.agents/skills/__SKILL_NAME__/bin/magi redis reset
 ~/.agents/skills/__SKILL_NAME__/bin/magi agent spawn
 ~/.agents/skills/__SKILL_NAME__/bin/magi agent despawn
