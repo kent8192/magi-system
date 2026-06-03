@@ -6,8 +6,8 @@ description: Redis-backed cross-agent messaging for Codex and other CLI agents.
 Use `~/.agents/skills/__SKILL_NAME__/bin/magi` for all messaging operations.
 Do not read or edit `~/.magi` directly.
 When Codex hook output provides a `magi-system context` line, prefer its
-`agent:` and `team:` values for the current session; use the hook-derived value
-first.
+non-`unset` `agent:` and `team:` values for the current session; do not infer a
+reply target from stale local state when the hook reports `agent: unset`.
 Codex hooks ensure the managed app-server daemon is running before starting or
 restarting the live `magi codex bridge`, unless disabled with
 `MAGI_CODEX_APP_SERVER_DAEMON=0`. The bridge uses the Codex Unix control

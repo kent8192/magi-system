@@ -14,6 +14,8 @@ setup() {
   : >"$CALLS"
   REDIS_STATUS_FILE="$TEST_HOME/redis.status"
   printf 'up\n' >"$REDIS_STATUS_FILE"
+  TEAM_MEMBERS_FILE="$TEST_HOME/team-members.txt"
+  printf 'quiet-melchior codex /tmp/project\n' >"$TEAM_MEMBERS_FILE"
   CODEX_STATUS_FILE="$TEST_HOME/codex-daemon.status"
   printf 'running\n' >"$CODEX_STATUS_FILE"
 
@@ -22,7 +24,7 @@ setup() {
   cat >"$FAKE_CODEX" <<EOF
 #!/usr/bin/env bash
 if [ "\$1 \$2 \$3" = "app-server daemon version" ]; then
-  status="\$(cat "$CODEX_STATUS_FILE" 2>/dev/null || printf stopped)"
+  IFS= read -r status <"$CODEX_STATUS_FILE" || status=stopped
   printf '{"status":"%s"}\n' "\$status"
   [ "\$status" = "error" ] && exit 1
   exit 0
@@ -36,13 +38,15 @@ fi
 exit 0
 EOF
   chmod +x "$FAKE_CODEX"
+  export MAGI_CODEX_CLI="$FAKE_CODEX"
+  export MAGI_CODEX_CLI_SHELL=bash
   export PATH="$TEST_HOME/bin:$PATH"
 
   FAKE_MAGI="$TEST_HOME/magi"
   cat >"$FAKE_MAGI" <<EOF
 #!/usr/bin/env bash
 if [ "\$1 \$2" = "redis status" ]; then
-  [ "\$(cat "$REDIS_STATUS_FILE" 2>/dev/null)" = "down" ] && exit 1
+  grep -qx 'down' "$REDIS_STATUS_FILE" 2>/dev/null && exit 1
   exit 0
 fi
 if [ "\$1 \$2" = "redis start" ]; then
@@ -78,6 +82,10 @@ fi
 if [ "\$1" = "agent" ] && [ "\$2" = "despawn" ]; then
   echo "despawn \$*" >>"$CALLS"; exit 0
 fi
+if [ "\$1 \$2" = "team members" ]; then
+  [ -f "$TEST_HOME/team-members.fail" ] && exit 1
+  cat "$TEAM_MEMBERS_FILE"; exit 0
+fi
 if [ "\$1" = "codex" ] && [ "\$2" = "bridge" ]; then
   echo "bridge \$*" >>"$CALLS"; exit 0
 fi
@@ -85,6 +93,7 @@ exit 0
 EOF
   chmod +x "$FAKE_MAGI"
   export MAGI_BIN="$FAKE_MAGI"
+  export MAGI_BIN_SHELL=bash
 }
 
 teardown() {
@@ -113,12 +122,28 @@ teardown() {
   bash "$HOOKS/magi-codex-session-start.sh" <<<'{"session_id":"codex-bridge","cwd":"/tmp/project","hook_event_name":"SessionStart"}'
 
   for _ in 1 2 3 4 5; do
-    grep -q "bridge codex bridge --thread codex-bridge --cwd /tmp/project --codex codex" "$CALLS" && break
+    grep -q "bridge codex bridge --thread codex-bridge --cwd /tmp/project --codex $FAKE_CODEX" "$CALLS" && break
     sleep 0.1
   done
-  grep -q "bridge codex bridge --thread codex-bridge --cwd /tmp/project --codex codex" "$CALLS"
+  grep -q "bridge codex bridge --thread codex-bridge --cwd /tmp/project --codex $FAKE_CODEX" "$CALLS"
   local pid_file="$MAGI_CODEX_STATE_DIR/bridges/codex-bridge.pid"
   [ -f "$pid_file" ]
+}
+
+@test "Codex SessionStart replaces a stale recorded agent before reporting context" {
+  mkdir -p "$MAGI_CODEX_STATE_DIR/sessions" "$MAGI_CODEX_STATE_DIR/current"
+  printf 'refreshed-melchior\ntestteam\n' >"$MAGI_CODEX_STATE_DIR/sessions/codex-stale.agent"
+  printf 'refreshed-melchior\ntestteam\n' >"$MAGI_CODEX_STATE_DIR/current/tmpproject.agent"
+
+  run bash "$HOOKS/magi-codex-session-start.sh" <<<'{"session_id":"codex-stale","cwd":"/tmp/project","hook_event_name":"SessionStart"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"agent: quiet-melchior"* ]]
+  [[ "$output" != *"refreshed-melchior"* ]]
+
+  local file="$MAGI_CODEX_STATE_DIR/sessions/codex-stale.agent"
+  [ "$(sed -n '1p' "$file")" = "quiet-melchior" ]
+  [ "$(sed -n '2p' "$file")" = "testteam" ]
+  grep -q "spawn agent spawn --type codex" "$CALLS"
 }
 
 @test "Codex SessionStart starts managed app-server daemon before bridge when stopped" {
@@ -128,14 +153,14 @@ teardown() {
   [ "$status" -eq 0 ]
 
   for _ in 1 2 3 4 5; do
-    grep -q "bridge codex bridge --thread codex-daemon --cwd /tmp/project --codex codex" "$CALLS" && break
+    grep -q "bridge codex bridge --thread codex-daemon --cwd /tmp/project --codex $FAKE_CODEX" "$CALLS" && break
     sleep 0.1
   done
   grep -q '^codex-daemon-start app-server daemon start$' "$CALLS"
-  grep -q "bridge codex bridge --thread codex-daemon --cwd /tmp/project --codex codex" "$CALLS"
+  grep -q "bridge codex bridge --thread codex-daemon --cwd /tmp/project --codex $FAKE_CODEX" "$CALLS"
   local daemon_line bridge_line
   daemon_line="$(grep -n '^codex-daemon-start app-server daemon start$' "$CALLS" | head -1 | cut -d: -f1)"
-  bridge_line="$(grep -n 'bridge codex bridge --thread codex-daemon --cwd /tmp/project --codex codex' "$CALLS" | head -1 | cut -d: -f1)"
+  bridge_line="$(grep -n "bridge codex bridge --thread codex-daemon --cwd /tmp/project --codex $FAKE_CODEX" "$CALLS" | head -1 | cut -d: -f1)"
   [ "$daemon_line" -lt "$bridge_line" ]
 }
 
@@ -144,10 +169,10 @@ teardown() {
     bash "$HOOKS/magi-codex-session-start.sh" <<<'{"session_id":"codex-socket","cwd":"/tmp/project","hook_event_name":"SessionStart"}'
 
   for _ in 1 2 3 4 5; do
-    grep -q "bridge codex bridge --thread codex-socket --cwd /tmp/project --codex codex --socket /tmp/codex-app.sock" "$CALLS" && break
+    grep -q "bridge codex bridge --thread codex-socket --cwd /tmp/project --codex $FAKE_CODEX --socket /tmp/codex-app.sock" "$CALLS" && break
     sleep 0.1
   done
-  grep -q "bridge codex bridge --thread codex-socket --cwd /tmp/project --codex codex --socket /tmp/codex-app.sock" "$CALLS"
+  grep -q "bridge codex bridge --thread codex-socket --cwd /tmp/project --codex $FAKE_CODEX --socket /tmp/codex-app.sock" "$CALLS"
 }
 
 @test "MAGI_CODEX_APP_SERVER_BRIDGE=0 disables Codex bridge startup" {
@@ -221,6 +246,55 @@ teardown() {
   ! grep -q '^config-set config set identity.active_team testteam$' "$CALLS"
 }
 
+@test "Codex UserPromptSubmit replaces a stale session record before injecting context" {
+  mkdir -p "$MAGI_CODEX_STATE_DIR/sessions" "$MAGI_CODEX_STATE_DIR/current"
+  printf 'refreshed-melchior\ntestteam\n' >"$MAGI_CODEX_STATE_DIR/sessions/thread-stale-agent.agent"
+  printf 'refreshed-melchior\ntestteam\n' >"$MAGI_CODEX_STATE_DIR/current/tmpproject.agent"
+
+  CODEX_THREAD_ID=thread-stale-agent run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"agent: quiet-melchior"* ]]
+  [[ "$output" == *"session_record: quiet-melchior"* ]]
+  [[ "$output" != *"refreshed-melchior"* ]]
+
+  local file="$MAGI_CODEX_STATE_DIR/sessions/thread-stale-agent.agent"
+  [ "$(sed -n '1p' "$file")" = "quiet-melchior" ]
+  [ "$(sed -n '2p' "$file")" = "testteam" ]
+  local current="$MAGI_CODEX_STATE_DIR/current/tmpproject.agent"
+  [ "$(sed -n '1p' "$current")" = "quiet-melchior" ]
+  grep -q "spawn agent spawn --type codex" "$CALLS"
+}
+
+@test "Codex UserPromptSubmit does not expose a recorded agent when Redis is down" {
+  mkdir -p "$MAGI_CODEX_STATE_DIR/sessions"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_CODEX_STATE_DIR/sessions/thread-redis-down.agent"
+  printf 'down\n' >"$REDIS_STATUS_FILE"
+
+  CODEX_THREAD_ID=thread-redis-down run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"agent: unset"* ]]
+  [[ "$output" == *"team: testteam"* ]]
+  [[ "$output" == *"redis: DOWN"* ]]
+  [[ "$output" == *"session_record: unverified"* ]]
+  ! grep -q '^bridge ' "$CALLS"
+}
+
+@test "Codex UserPromptSubmit keeps a local record when roster lookup fails" {
+  mkdir -p "$MAGI_CODEX_STATE_DIR/sessions" "$MAGI_CODEX_STATE_DIR/current"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_CODEX_STATE_DIR/sessions/thread-roster-error.agent"
+  printf 'quiet-melchior\ntestteam\n' >"$MAGI_CODEX_STATE_DIR/current/tmpproject.agent"
+  touch "$TEST_HOME/team-members.fail"
+
+  CODEX_THREAD_ID=thread-roster-error run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"agent: unset"* ]]
+  [[ "$output" == *"session_record: unverified"* ]]
+  [ "$(sed -n '1p' "$MAGI_CODEX_STATE_DIR/sessions/thread-roster-error.agent")" = "quiet-melchior" ]
+  [ "$(sed -n '1p' "$MAGI_CODEX_STATE_DIR/current/tmpproject.agent")" = "quiet-melchior" ]
+  ! grep -q '^spawn ' "$CALLS"
+  ! grep -q '^bridge ' "$CALLS"
+}
+
 @test "Codex UserPromptSubmit reports bridge status sidecar" {
   mkdir -p "$MAGI_CODEX_STATE_DIR/sessions" "$MAGI_CODEX_STATE_DIR/bridges"
   printf 'quiet-melchior\ntestteam\n' >"$MAGI_CODEX_STATE_DIR/sessions/thread-bridge.agent"
@@ -275,7 +349,7 @@ EOF
   CODEX_THREAD_ID=thread-stale run bash "$HOOKS/magi-codex-prompt-context.sh" <<<'{"cwd":"/tmp/project","hook_event_name":"UserPromptSubmit","user_prompt":"status"}'
   [ "$status" -eq 0 ]
   [[ "$output" == *"codex app-server bridge: starting"* ]]
-  grep -q "bridge codex bridge --thread thread-stale --cwd /tmp/project --codex codex" "$CALLS"
+  grep -q "bridge codex bridge --thread thread-stale --cwd /tmp/project --codex $FAKE_CODEX" "$CALLS"
   [ -f "$MAGI_CODEX_STATE_DIR/bridges/thread-stale.pid" ]
   [ "$(cat "$MAGI_CODEX_STATE_DIR/bridges/thread-stale.pid")" != "999999" ]
 }
@@ -289,11 +363,11 @@ EOF
   [ "$status" -eq 0 ]
 
   for _ in 1 2 3 4 5; do
-    grep -q "bridge codex bridge --thread thread-daemon-prompt --cwd /tmp/project --codex codex" "$CALLS" && break
+    grep -q "bridge codex bridge --thread thread-daemon-prompt --cwd /tmp/project --codex $FAKE_CODEX" "$CALLS" && break
     sleep 0.1
   done
   grep -q '^codex-daemon-start app-server daemon start$' "$CALLS"
-  grep -q "bridge codex bridge --thread thread-daemon-prompt --cwd /tmp/project --codex codex" "$CALLS"
+  grep -q "bridge codex bridge --thread thread-daemon-prompt --cwd /tmp/project --codex $FAKE_CODEX" "$CALLS"
 }
 
 @test "Codex UserPromptSubmit spawns when SessionStart did not record this session" {

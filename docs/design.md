@@ -134,6 +134,14 @@ each prompt with the resolved session id, active magi agent, active team, Redis
 state, and session record status. If Codex was updated after a session started
 and SessionStart did not create a record, UserPromptSubmit performs the same
 spawn-and-record step before injecting context.
+
+The injected `agent` is a replyable identity, not just the first line of a local
+session file. When Redis is reachable, Codex hooks verify the recorded name with
+`magi team members --team <team>` before reporting it or starting the bridge. A
+recorded name missing from the roster is treated as stale, removed from the
+session/current state files, and replaced through the normal spawn path. When
+Redis is unreachable, the hook keeps the local record for later cleanup but
+reports `agent: unset` because the name cannot be proven replyable.
 Setup prompts are handled by the `setup-magi` skill, which reads `setup.sh` and
 uses that script as the setup entrypoint instead of relying on prompt-string
 matching inside hooks.
@@ -156,7 +164,7 @@ complete before at least one Monitor is waiting.
 Hooks also keep a small `<session>.health` sidecar next to each recorded
 ephemeral agent. Failed Redis health checks are counted without sleeping in the
 hook path: the next due check is scheduled with a 1s, 2s, then 4s backoff. After
-three due consecutive failures the sidecar marks cleanup pending; the next hook
+three consecutive failures the sidecar marks cleanup pending; the next hook
 run that can reach Redis removes the agent through `magi agent despawn` and
 clears the session record.
 

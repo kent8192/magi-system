@@ -21,6 +21,12 @@ if [ -z "$MAGI" ]; then
   done
 fi
 { [ -n "$MAGI" ] && [ -x "$MAGI" ]; } || exit 0
+MAGI_CMD=("$MAGI")
+if [ -n "${MAGI_BIN_SHELL:-}" ]; then
+  MAGI_CMD=("$MAGI_BIN_SHELL" "$MAGI")
+fi
+
+magi_cmd() { "${MAGI_CMD[@]}" "$@"; }
 
 truthy() {
   case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
@@ -38,7 +44,30 @@ json_string() {
     head -1
 }
 
-redis_reachable() { "$MAGI" redis status >/dev/null 2>&1; }
+redis_reachable() { magi_cmd redis status >/dev/null 2>&1; }
+
+team_member_status() {
+  local team_name="$1" name="$2"
+  [ -n "$team_name" ] && [ -n "$name" ] || { printf 'error\n'; return 0; }
+  local members
+  if ! members="$(magi_cmd team members --team "$team_name" 2>/dev/null)"; then
+    printf 'error\n'
+    return 0
+  fi
+  if printf '%s\n' "$members" |
+    awk -v target="$name" 'NF > 0 && $1 == target { found = 1 } END { exit found ? 0 : 1 }'; then
+    printf 'found\n'
+  else
+    printf 'missing\n'
+  fi
+}
+
+remove_current_if_matches() {
+  local current_path="$1" name="$2"
+  [ -n "$current_path" ] && [ -f "$current_path" ] || return 0
+  [ "$(sed -n '1p' "$current_path" 2>/dev/null || true)" = "$name" ] &&
+    rm -f "$current_path" 2>/dev/null || true
+}
 
 STATE_DIR="${MAGI_CODEX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/magi-codex}"
 SESSIONS_DIR="$STATE_DIR/sessions"
@@ -52,7 +81,7 @@ PROJECT_CWD="$(json_string cwd)"
 [ -n "$PROJECT_CWD" ] || PROJECT_CWD="${PWD:-}"
 
 if ! redis_reachable && truthy "${MAGI_CODEX_AUTOSTART_REDIS:-}"; then
-  "$MAGI" redis start >/dev/null 2>&1 || true
+  magi_cmd redis start >/dev/null 2>&1 || true
   for _ in 1 2 3 4 5 6 7 8 9 10; do
     redis_reachable && break
     sleep 0.5
@@ -66,7 +95,8 @@ else
 fi
 
 agent=""
-team="$(sanitize "$("$MAGI" config get identity.active_team 2>/dev/null)")"
+team="$(sanitize "$(magi_cmd config get identity.active_team 2>/dev/null)")"
+recorded_agent=""
 
 ephemeral_on() {
   case "$(printf '%s' "${MAGI_CODEX_EPHEMERAL:-1}" | tr '[:upper:]' '[:lower:]')" in
@@ -85,14 +115,25 @@ if [ -n "$PROJECT_CWD" ]; then
 fi
 
 if [ -n "$session_file" ] && [ -f "$session_file" ]; then
-  agent="$(sanitize "$(sed -n '1p' "$session_file" 2>/dev/null)")"
+  recorded_agent="$(sanitize "$(sed -n '1p' "$session_file" 2>/dev/null)")"
   session_team="$(sanitize "$(sed -n '2p' "$session_file" 2>/dev/null)")"
   [ -n "$session_team" ] && team="$session_team"
+  if [ "$redis_state" = "reachable" ] && [ -n "$recorded_agent" ] && [ -n "$team" ]; then
+    case "$(team_member_status "$team" "$recorded_agent")" in
+      found)
+        agent="$recorded_agent"
+        ;;
+      missing)
+        rm -f "$session_file" "${session_file%.agent}.health" 2>/dev/null || true
+        remove_current_if_matches "$current_file" "$recorded_agent"
+        ;;
+    esac
+  fi
 fi
 
 if ephemeral_on && [ "$redis_state" = "reachable" ] && [ -n "$team" ] \
   && [ -n "$session_file" ] && [ ! -f "$session_file" ]; then
-  spawned="$(sanitize "$("$MAGI" agent spawn --type codex 2>/dev/null | tail -n1)")"
+  spawned="$(sanitize "$(magi_cmd agent spawn --type codex 2>/dev/null | tail -n1)")"
   if [ -n "$spawned" ]; then
     mkdir -p "$SESSIONS_DIR" 2>/dev/null || true
     printf '%s\n%s\n' "$spawned" "$team" >"$session_file" 2>/dev/null || true
@@ -136,8 +177,13 @@ daemon_auto_on() {
 codex_daemon_running() {
   local codex_cli="${MAGI_CODEX_CLI:-codex}"
   local status
-  command -v "$codex_cli" >/dev/null 2>&1 || return 1
-  status="$("$codex_cli" app-server daemon version 2>/dev/null)" || return 1
+  if [ -n "${MAGI_CODEX_CLI_SHELL:-}" ]; then
+    [ -x "$codex_cli" ] || return 1
+    status="$("$MAGI_CODEX_CLI_SHELL" "$codex_cli" app-server daemon version 2>/dev/null)" || return 1
+  else
+    command -v "$codex_cli" >/dev/null 2>&1 || return 1
+    status="$("$codex_cli" app-server daemon version 2>/dev/null)" || return 1
+  fi
   printf '%s\n' "$status" | grep -q '"status"[[:space:]]*:[[:space:]]*"running"'
 }
 
@@ -146,8 +192,13 @@ ensure_codex_daemon() {
   daemon_auto_on || return 0
   codex_daemon_running && return 0
   local codex_cli="${MAGI_CODEX_CLI:-codex}"
-  command -v "$codex_cli" >/dev/null 2>&1 || return 0
-  "$codex_cli" app-server daemon start >/dev/null 2>&1 || true
+  if [ -n "${MAGI_CODEX_CLI_SHELL:-}" ]; then
+    [ -x "$codex_cli" ] || return 0
+    "$MAGI_CODEX_CLI_SHELL" "$codex_cli" app-server daemon start >/dev/null 2>&1 || true
+  else
+    command -v "$codex_cli" >/dev/null 2>&1 || return 0
+    "$codex_cli" app-server daemon start >/dev/null 2>&1 || true
+  fi
 }
 
 status_field() {
@@ -169,9 +220,9 @@ if bridge_on && [ "$redis_state" = "reachable" ] && [ -n "$agent" ] && [ -n "$te
     rm -f "$bridge_pid_file" 2>/dev/null || true
     ensure_codex_daemon
     mkdir -p "$BRIDGES_DIR" 2>/dev/null || true
-    MAGI_SESSION_ID="$SESSION_ID" CODEX_THREAD_ID="$SESSION_ID" CODEX_SESSION_ID="$SESSION_ID" \
+    env MAGI_SESSION_ID="$SESSION_ID" CODEX_THREAD_ID="$SESSION_ID" CODEX_SESSION_ID="$SESSION_ID" \
       MAGI_CODEX_STATE_DIR="$STATE_DIR" \
-      "$MAGI" codex bridge --thread "$SESSION_ID" --cwd "$PROJECT_CWD" \
+      "${MAGI_CMD[@]}" codex bridge --thread "$SESSION_ID" --cwd "$PROJECT_CWD" \
       --codex "${MAGI_CODEX_CLI:-codex}" "${bridge_socket_args[@]}" \
       >>"$bridge_log_file" 2>&1 &
     bridge_pid="$!"
