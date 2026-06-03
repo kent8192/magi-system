@@ -100,9 +100,10 @@ The repository ships two plugins under the `magi` marketplace:
   keeps root-level `plugin.json`, `hooks/`, and `skills/` copies because Codex
   resolves plugin resources from the installed plugin root. It exposes the
   `magi` messaging skill plus Codex session hooks that spawn a session-scoped
-  `codex` agent, inject magi-system context on each prompt, self-heal a missing
-  session record when SessionStart did not fire, and clean the agent up on
-  session end or after repeated Redis health-check failures. The package also
+  `codex` agent, inject magi-system context on each prompt, self-heal missing or
+  stale session records, and clean the agent up on session end or after repeated
+  Redis health-check failures. Hook context only reports an `agent` value after
+  Redis confirms that name is still a member of the active team. The package also
   exposes the `setup-magi` skill for setup prompts; that skill reads `setup.sh`
   and follows the entrypoint that starts managed Redis, creates the active setup
   team when missing, and stores it through the `magi` CLI. The hooks also ensure
@@ -239,6 +240,13 @@ through the subprocess environment. Persistent config never stores an active
 agent, so concurrent Codex or Claude Code sessions in the same `$HOME` cannot
 overwrite each other's MAGI agent names.
 
+Codex prompt context is stricter than the local session file: the injected
+`agent:` field is only a reply target when Redis is reachable and `magi team
+members --team <team>` still contains that exact name. If the record is stale,
+the hook clears it and self-heals by spawning a fresh session agent when
+ephemeral Codex agents are enabled. If Redis is unreachable, the context reports
+`agent: unset` instead of exposing an unverified local record.
+
 Direct registration commands manage explicit `(team, agent, type, project)`
 tuples in Redis. `identity list` and `identity whoami` inspect those tuples for
 operator discovery without adding a persistent active-agent fallback.
@@ -254,7 +262,7 @@ state; stream history is left immutable and therefore retains historical names.
 edit user runtime configuration outside that command path.
 
 Session hooks track Redis health for recorded ephemeral agents without blocking
-startup or prompt handling. Three due consecutive failed health checks mark a
+startup or prompt handling. Three consecutive failed health checks mark a
 session for cleanup using a 1s, 2s, then 4s exponential backoff; when Redis is
 reachable again, the hook runs `magi agent despawn` and clears the local session
 record.

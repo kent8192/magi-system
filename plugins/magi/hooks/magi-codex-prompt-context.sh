@@ -16,6 +16,15 @@ if [ -z "$MAGI" ]; then
     [ -x "$c" ] && MAGI="$c" && break
   done
 fi
+MAGI_CMD=()
+if { [ -n "$MAGI" ] && [ -x "$MAGI" ]; }; then
+  MAGI_CMD=("$MAGI")
+  if [ -n "${MAGI_BIN_SHELL:-}" ]; then
+    MAGI_CMD=("$MAGI_BIN_SHELL" "$MAGI")
+  fi
+fi
+
+magi_cmd() { "${MAGI_CMD[@]}" "$@"; }
 
 sanitize() { printf '%s' "${1:-}" | tr -d '"\\\n\r' ; }
 safe_key() { printf '%s' "${1:-}" | tr -cd 'A-Za-z0-9._-' ; }
@@ -72,7 +81,7 @@ cleanup_pending_agent() {
   name="$(sanitize "$(health_field "$health_file" agent)")"
   team_name="$(sanitize "$(health_field "$health_file" team)")"
   [ -n "$name" ] && [ -n "$team_name" ] || return 1
-  "$MAGI" agent despawn --team "$team_name" --name "$name" >/dev/null 2>&1 || return 1
+  magi_cmd agent despawn --team "$team_name" --name "$name" >/dev/null 2>&1 || return 1
   rm -f "$session_file" "$health_file" 2>/dev/null || true
   if [ -n "$current_file" ] && [ -f "$current_file" ]; then
     current_name="$(sed -n '1p' "$current_file" 2>/dev/null || true)"
@@ -105,6 +114,29 @@ record_health_failure() {
   write_health_state "$health_file" "$name" "$team_name" "$failures" "$((now + delay))" "$cleanup_pending"
 }
 
+team_member_status() {
+  local team_name="$1" name="$2"
+  [ -n "$team_name" ] && [ -n "$name" ] || { printf 'error\n'; return 0; }
+  local members
+  if ! members="$(magi_cmd team members --team "$team_name" 2>/dev/null)"; then
+    printf 'error\n'
+    return 0
+  fi
+  if printf '%s\n' "$members" |
+    awk -v target="$name" 'NF > 0 && $1 == target { found = 1 } END { exit found ? 0 : 1 }'; then
+    printf 'found\n'
+  else
+    printf 'missing\n'
+  fi
+}
+
+remove_current_if_matches() {
+  local current_path="$1" name="$2"
+  [ -n "$current_path" ] && [ -f "$current_path" ] || return 0
+  [ "$(sed -n '1p' "$current_path" 2>/dev/null || true)" = "$name" ] &&
+    rm -f "$current_path" 2>/dev/null || true
+}
+
 STATE_DIR="${MAGI_CODEX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/magi-codex}"
 SESSIONS_DIR="$STATE_DIR/sessions"
 CURRENT_DIR="$STATE_DIR/current"
@@ -120,16 +152,17 @@ redis_state="unavailable"
 agent=""
 team=""
 if { [ -n "$MAGI" ] && [ -x "$MAGI" ]; }; then
-  if "$MAGI" redis status >/dev/null 2>&1; then
+  if magi_cmd redis status >/dev/null 2>&1; then
     redis_state="reachable"
   else
     redis_state="DOWN"
   fi
-  team="$(sanitize "$("$MAGI" config get identity.active_team 2>/dev/null)")"
+  team="$(sanitize "$(magi_cmd config get identity.active_team 2>/dev/null)")"
 fi
 
 session_record="missing"
 session_team=""
+recorded_agent=""
 session_file=""
 session_key="$(safe_key "$SESSION_ID")"
 if [ -n "$session_key" ]; then
@@ -161,8 +194,13 @@ daemon_auto_on() {
 codex_daemon_running() {
   local codex_cli="${MAGI_CODEX_CLI:-codex}"
   local status
-  command -v "$codex_cli" >/dev/null 2>&1 || return 1
-  status="$("$codex_cli" app-server daemon version 2>/dev/null)" || return 1
+  if [ -n "${MAGI_CODEX_CLI_SHELL:-}" ]; then
+    [ -x "$codex_cli" ] || return 1
+    status="$("$MAGI_CODEX_CLI_SHELL" "$codex_cli" app-server daemon version 2>/dev/null)" || return 1
+  else
+    command -v "$codex_cli" >/dev/null 2>&1 || return 1
+    status="$("$codex_cli" app-server daemon version 2>/dev/null)" || return 1
+  fi
   printf '%s\n' "$status" | grep -q '"status"[[:space:]]*:[[:space:]]*"running"'
 }
 
@@ -171,8 +209,13 @@ ensure_codex_daemon() {
   daemon_auto_on || return 0
   codex_daemon_running && return 0
   local codex_cli="${MAGI_CODEX_CLI:-codex}"
-  command -v "$codex_cli" >/dev/null 2>&1 || return 0
-  "$codex_cli" app-server daemon start >/dev/null 2>&1 || true
+  if [ -n "${MAGI_CODEX_CLI_SHELL:-}" ]; then
+    [ -x "$codex_cli" ] || return 0
+    "$MAGI_CODEX_CLI_SHELL" "$codex_cli" app-server daemon start >/dev/null 2>&1 || true
+  else
+    command -v "$codex_cli" >/dev/null 2>&1 || return 0
+    "$codex_cli" app-server daemon start >/dev/null 2>&1 || true
+  fi
 }
 
 status_field() {
@@ -195,9 +238,9 @@ start_bridge() {
     bridge_socket_args=(--socket "$MAGI_CODEX_APP_SERVER_SOCKET")
   fi
   mkdir -p "$BRIDGES_DIR" 2>/dev/null || true
-  MAGI_SESSION_ID="$SESSION_ID" CODEX_THREAD_ID="$SESSION_ID" CODEX_SESSION_ID="$SESSION_ID" \
+  env MAGI_SESSION_ID="$SESSION_ID" CODEX_THREAD_ID="$SESSION_ID" CODEX_SESSION_ID="$SESSION_ID" \
     MAGI_CODEX_STATE_DIR="$STATE_DIR" \
-    "$MAGI" codex bridge --thread "$SESSION_ID" --cwd "$PROJECT_CWD" \
+    "${MAGI_CMD[@]}" codex bridge --thread "$SESSION_ID" --cwd "$PROJECT_CWD" \
     --codex "${MAGI_CODEX_CLI:-codex}" "${bridge_socket_args[@]}" \
     >>"$log_file" 2>&1 &
   local bridge_pid="$!"
@@ -215,26 +258,54 @@ if [ -n "$health_file" ] && [ "$redis_state" = "reachable" ]; then
 fi
 if [ -n "$session_key" ]; then
   if [ -f "$session_file" ]; then
-    session_record="$(sanitize "$(sed -n '1p' "$session_file" 2>/dev/null)")"
+    recorded_agent="$(sanitize "$(sed -n '1p' "$session_file" 2>/dev/null)")"
     session_team="$(sanitize "$(sed -n '2p' "$session_file" 2>/dev/null)")"
-    [ -n "$session_record" ] || session_record="present"
+    if [ -n "$recorded_agent" ]; then
+      session_record="$recorded_agent"
+    else
+      session_record="present"
+    fi
+  fi
+fi
+
+if [ -n "$session_team" ]; then
+  team="$session_team"
+fi
+if [ -n "$recorded_agent" ] && [ -n "$team" ]; then
+  if [ "$redis_state" = "reachable" ]; then
+    case "$(team_member_status "$team" "$recorded_agent")" in
+      found)
+        agent="$recorded_agent"
+        ;;
+      missing)
+        rm -f "$session_file" "$health_file" 2>/dev/null || true
+        remove_current_if_matches "$current_file" "$recorded_agent"
+        session_record="missing"
+        session_team=""
+        recorded_agent=""
+        ;;
+      *)
+        session_record="unverified"
+        ;;
+    esac
+  else
+    session_record="unverified"
   fi
 fi
 
 if [ "$session_record" = "missing" ] && ephemeral_on \
   && [ "$redis_state" = "reachable" ] && [ -n "$team" ] && [ -n "$session_file" ]; then
-  spawned="$(sanitize "$("$MAGI" agent spawn --type codex 2>/dev/null | tail -n1)")"
+  spawned="$(sanitize "$(magi_cmd agent spawn --type codex 2>/dev/null | tail -n1)")"
   if [ -n "$spawned" ]; then
     mkdir -p "$SESSIONS_DIR" 2>/dev/null || true
     printf '%s\n%s\n' "$spawned" "$team" >"$session_file" 2>/dev/null || true
     session_record="$spawned"
     session_team="$team"
+    recorded_agent="$spawned"
+    agent="$spawned"
   fi
 fi
 
-if [ "$session_record" != "missing" ] && [ "$session_record" != "present" ]; then
-  agent="$session_record"
-fi
 if [ -n "$session_team" ]; then
   team="$session_team"
 fi
@@ -242,8 +313,8 @@ fi
 if [ -n "$health_file" ] && [ -f "$session_file" ]; then
   if [ "$redis_state" = "reachable" ]; then
     clear_session_health "$health_file"
-  elif [ "$session_record" != "missing" ] && [ "$session_record" != "present" ]; then
-    record_health_failure "$health_file" "$session_record" "$session_team"
+  elif [ -n "$recorded_agent" ] && [ -n "$session_team" ]; then
+    record_health_failure "$health_file" "$recorded_agent" "$session_team"
   fi
 fi
 if [ -n "$agent" ] && [ -n "$team" ] && [ -n "$current_file" ]; then

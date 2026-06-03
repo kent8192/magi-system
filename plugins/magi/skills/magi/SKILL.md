@@ -26,8 +26,8 @@ magi config get identity.active_team    # your active team
 If Redis is down: `magi redis start`. If the team is unset:
 `magi config set identity.active_team <team>`. Agent names are session-scoped;
 prefer the `magi-system context` injected by Codex hooks for this session's
-current agent name. Use `magi agent spawn --team <team> --type codex` only for
-manual lifecycle control.
+current agent name when it reports a non-`unset` `agent:` value. Use
+`magi agent spawn --team <team> --type codex` only for manual lifecycle control.
 
 ## Common operations
 
@@ -55,8 +55,8 @@ magi watch --once --format context      # wait for one delivery, then exit
   fans out to the team channel.
 - In a Codex session, `send`, `inbox`, `history`, and `watch` use hook-created
   session state. The hook-injected `magi-system context` is the preferred source
-  for this session's agent name; the CLI has no persistent active-agent
-  fallback.
+  for this session's agent name when `agent:` is not `unset`; the CLI has no
+  persistent active-agent fallback.
 
 ## Codex tutorial
 
@@ -104,14 +104,16 @@ magi config set identity.active_team <team>   # join does not set the active tea
   UserPromptSubmit, and SessionEnd hooks. When Redis is reachable and an active
   team is set, Codex automatically runs `magi agent spawn --type codex` for the
   session and despawns it on session end. If SessionStart did not record the
-  current session, UserPromptSubmit self-heals by spawning and recording before
-  injecting context. On each prompt, Codex receives the current magi-system
-  context: session id, active agent, active team, Redis state, and session
-  record status. Treat that hook-derived active agent as authoritative for
-  self-identification. Three due consecutive Redis health-check failures mark
-  the recorded agent for cleanup with a 1s, 2s, then 4s nonblocking backoff; the
-  next reachable hook run despawns it and clears the stale record. Disable
-  spawning with `MAGI_CODEX_EPHEMERAL=0`.
+  current session, or recorded a name that is no longer in `magi team members`,
+  UserPromptSubmit self-heals by spawning and recording before injecting
+  context. On each prompt, Codex receives the current magi-system context:
+  session id, active agent, active team, Redis state, and session record status.
+  Treat a non-`unset` hook-derived active agent as authoritative for
+  self-identification; when Redis is unreachable, the hook reports `agent:
+  unset` instead of exposing an unverified local record. Three consecutive
+  Redis health-check failures mark the recorded agent for cleanup with a 1s,
+  2s, then 4s nonblocking backoff; the next reachable hook run despawns it and
+  clears the stale record. Disable spawning with `MAGI_CODEX_EPHEMERAL=0`.
 - SessionStart ensures the managed Codex app-server daemon is running, then
   launches `magi codex bridge --thread <session-id>` unless
   `MAGI_CODEX_APP_SERVER_BRIDGE=0`. The bridge subscribes to Redis Pub/Sub for

@@ -16,6 +16,12 @@ if [ -z "$MAGI" ]; then
   done
 fi
 { [ -n "$MAGI" ] && [ -x "$MAGI" ]; } || exit 0
+MAGI_CMD=("$MAGI")
+if [ -n "${MAGI_BIN_SHELL:-}" ]; then
+  MAGI_CMD=("$MAGI_BIN_SHELL" "$MAGI")
+fi
+
+magi_cmd() { "${MAGI_CMD[@]}" "$@"; }
 
 json_string() {
   printf '%s' "$HOOK_INPUT" |
@@ -54,7 +60,7 @@ name="$(sed -n '1p' "$session_file" 2>/dev/null || true)"
 team="$(sed -n '2p' "$session_file" 2>/dev/null || true)"
 
 if [ -n "$name" ] && [ -n "$team" ]; then
-  "$MAGI" agent despawn --team "$team" --name "$name" >/dev/null 2>&1 || true
+  magi_cmd agent despawn --team "$team" --name "$name" >/dev/null 2>&1 || true
 fi
 
 rm -f "$session_file" 2>/dev/null || true
