@@ -18,6 +18,11 @@
 
 ---
 
+> MAGI SYSTEM started as a heavily modified fork of
+> [agmsg](https://github.com/fujibee/agmsg), an MIT-licensed Bash + SQLite
+> cross-agent messaging tool. MAGI SYSTEM is not affiliated with or endorsed by
+> the original agmsg authors or any third-party franchise or rights holder.
+
 magi is a Rust CLI that stores team membership, invites, message history, and
 per-agent inbox cursors in Redis. Redis Streams are the durable message log and
 Pub/Sub is used as a low-latency wakeup for `watch`.
@@ -288,4 +293,4 @@ notice and point callers to the Rust CLI.
 
 MAGI SYSTEM builds on [agmsg](https://github.com/fujibee/agmsg), the original
 Bash + SQLite cross-agent messaging tool. Thanks to its authors for the design
-this project is based on.
+this project is based on. MAGI SYSTEM is an independent open-source project.
