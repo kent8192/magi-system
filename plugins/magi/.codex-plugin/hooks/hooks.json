@@ -1,5 +1,4 @@
 {
-  "description": "Codex session-scoped magi agent lifecycle.",
   "hooks": {
     "SessionStart": [
       {
